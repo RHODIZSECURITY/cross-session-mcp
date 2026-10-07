@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cross-session-mcp"
+dynamic = ["version"]
+description = "Standalone MCP server that indexes, summarizes and hands off sessions across Claude Code, agy, OpenCode, Codex, Cursor and Copilot, with a per-project memory bank built with the Gemini API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Reinaldo Arsenio Lorenzo Trujillo", email = "reiarseni@gmail.com"}]
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+cross-session-mcp = "cross_session_mcp.cli:main"
+cross-session-mcp-server = "cross_session_mcp.server:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "cross_session_mcp.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["cross_session_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m 'not live'"
+markers = [
+    "live: tests against the real stores and the Gemini API (run with: pytest -m live)",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
