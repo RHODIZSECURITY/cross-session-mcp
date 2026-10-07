@@ -4,6 +4,8 @@ from cross_session_mcp.readers.agy import AgySessionReader
 from cross_session_mcp.readers.base import BaseSessionReader
 from cross_session_mcp.readers.claude import ClaudeSessionReader
 from cross_session_mcp.readers.codex import CodexSessionReader
+from cross_session_mcp.readers.copilot import CopilotSessionReader
+from cross_session_mcp.readers.cursor import CursorSessionReader
 from cross_session_mcp.readers.opencode import OpenCodeSessionReader
 
 
@@ -14,6 +16,8 @@ def get_all_readers() -> list[BaseSessionReader]:
         AgySessionReader(),
         OpenCodeSessionReader(),
         CodexSessionReader(),
+        CursorSessionReader(),
+        CopilotSessionReader(),
     ]
 
 
