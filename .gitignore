@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local databases and session handoffs
+*.db
+*.db-wal
+*.db-shm
+handoff.md
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# AI assistant and spec tooling (local only)
+openspec/
+.claude/
+.claude-mem/
+CLAUDE.md
+
+# Scratch folder with third-party repos cloned only for reading
+EXPERIMENTS/
