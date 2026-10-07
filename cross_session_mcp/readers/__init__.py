@@ -1,14 +1,18 @@
 """Multi-harness session readers."""
 
+from cross_session_mcp.readers.agy import AgySessionReader
 from cross_session_mcp.readers.base import BaseSessionReader
 from cross_session_mcp.readers.claude import ClaudeSessionReader
 from cross_session_mcp.readers.codex import CodexSessionReader
+from cross_session_mcp.readers.opencode import OpenCodeSessionReader
 
 
 def get_all_readers() -> list[BaseSessionReader]:
     """Returns instances of every available reader."""
     return [
         ClaudeSessionReader(),
+        AgySessionReader(),
+        OpenCodeSessionReader(),
         CodexSessionReader(),
     ]
 
