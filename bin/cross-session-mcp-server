@@ -1,0 +1,6 @@
+#!/bin/sh
+# MCP server launcher for any harness (no installation or dependencies).
+# Usage in the harness MCP config: command = <absolute path to this script>
+DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export PYTHONPATH="$DIR${PYTHONPATH:+:$PYTHONPATH}"
+exec "${CROSS_SESSION_PYTHON:-python3}" -m cross_session_mcp.server "$@"
