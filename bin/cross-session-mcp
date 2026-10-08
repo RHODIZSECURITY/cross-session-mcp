@@ -1,0 +1,5 @@
+#!/bin/sh
+# cross-session-mcp CLI, no installation needed.
+DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export PYTHONPATH="$DIR${PYTHONPATH:+:$PYTHONPATH}"
+exec "${CROSS_SESSION_PYTHON:-python3}" -m cross_session_mcp.cli "$@"
