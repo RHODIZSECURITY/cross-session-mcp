@@ -1,0 +1,326 @@
+# cross-session-mcp
+
+**Pick up any coding session where you left it, in any agent.**
+
+An MCP server and CLI that indexes, summarizes and hands off development sessions across **Claude Code**,
+**Google Antigravity (`agy` and the IDE)**, **OpenCode**, **OpenAI Codex**, **Cursor** and **GitHub Copilot Chat
+(VS Code)**. It runs on the Python standard library alone (3.10+), with no dependencies to install.
+
+> "Resume yesterday's session" -> your agent gets an 8-section Extended Handoff of the last session in this project,
+> whichever harness it ran in, with the verbatim last instruction and the exact commands to continue.
+
+It works as a **layer over a memory bank** in SQLite: each session is summarized once with Gemini
+(`gemini-flash-lite-latest` by default) into an **Extended Handoff** that serves both to resume it and to feed the
+**consolidated project memory**. The bank maintains itself in the background, and every output is capped to save the
+agent's tokens. Without a key, a local extractor builds the handoff, so the agent is never blocked.
+
+## Why it is different
+
+- **One memory for every agent.** Start a task in Claude Code, continue in Codex, finish in Cursor: the handoff and
+  the project memory are built from the sessions of all six harnesses.
+- **Zero dependencies.** Standard library only. Any harness launches the script in `bin/` directly, with nothing to
+  install in a virtualenv.
+- **Read-only on your tools.** It never writes to the harness stores; it only reads their transcripts and indexes.
+- **The LLM proposes, the code decides.** Gemini writes summaries and proposes memory entries, but stable IDs,
+  pruning, section limits, the verbatim last instruction and the open question left at the end of a session are
+  enforced in code, deterministically.
+- **Cheap on context.** Tool definitions and instructions cost about 1,200 tokens per session, and no tool result
+  exceeds 40,000 characters; when one is cut, it says how to narrow the request.
+- **Secrets never leave your machine.** API keys, tokens, credentials in URLs, private keys, email addresses and
+  phone numbers are replaced with `[REDACTED]` before anything is sent to Gemini or stored.
+
+## What it reads from each harness (read-only)
+
+| Harness | Index | Transcript |
+|---|---|---|
+| Claude Code | `~/.claude/projects/*/<id>.jsonl` | same file (text, `tool_use`, `tool_result`) |
+| Antigravity | `~/.gemini/antigravity-cli/` **and** `~/.gemini/antigravity/` → `conversation_summaries.db` | `brain/<id>/.system_generated/logs/transcript_full.jsonl` |
+| OpenCode | `~/.local/share/opencode/opencode.db` (`session`) | `message` + `part` tables |
+| Codex | `~/.codex/state_5.sqlite` (`threads`) | JSONL from `threads.rollout_path` (`~/.codex/sessions/…`) |
+| Cursor | `~/.config/Cursor/User/globalStorage/state.vscdb` (`cursorDiskKV` → `composerData:*`) | `bubbleId:<composer>:<bubble>` (text and `toolFormerData`); workspace from `workspaceStorage/*/state.vscdb` |
+| Copilot (VS Code) | `~/.config/Code/User/workspaceStorage/*/chatSessions/*.jsonl` (+ `Code - Insiders`, `VSCodium`, `emptyWindowChatSessions`) | rebuilt by replaying the operation log (`kind` 0/1/2/3); the legacy `.json` format is supported too |
+
+Empty conversations, subagent sessions and excluded workspaces (by default, the internal `claude-mem` sessions) are
+left out. Every date is normalized to ISO 8601 UTC.
+
+## MCP tools
+
+Recommended order (the server instructions say so too): **memory → resume → search → turns**.
+
+| Tool | Purpose | Parameters |
+|---|---|---|
+| `get_project_memory` | The project MEMORY.md, no LLM. If there are unrecorded sessions, it starts background maintenance and says so | `workspace_path` |
+| `inject_session_context` | Extended Handoff ready to resume a previous session | `workspace_path` + `back` (1 = last, up to 10) **or** `session_id`; `harness`?, `focus_area`, `force_refresh` |
+| `generate_session_handoff` | The same Extended Handoff, without the resume wrapper | same as `inject_session_context` |
+| `search_project_memory` | Searches a topic in active and archived memory and in saved handoffs (no LLM) | `topic`, `workspace_path`, `all_projects`, `synthesize`, `limit` (≤ 50) |
+| `update_project_memory` | Forces memory consolidation (uses Gemini) | `workspace_path`, `sessions` (1–20), `force_refresh`, `export_path` |
+| `suggest_agent_rules` | Memory rules for `AGENTS.md` / `CLAUDE.md` (no LLM, read-only) | `workspace_path`, `target` (`agents`\|`claude`\|`both`) |
+| `list_cross_sessions` | Recent sessions from every harness | `workspace_path`, `harness`, `limit` (≤ 50), `refresh` |
+| `get_session_turns` | Verbatim turns, only for a specific detail | `session_id`, `harness`?, `query`, `max_turns` (10, ≤ 50), `include_tools` (off by default) |
+
+- `session_id` accepts a **prefix** (e.g. `4cbb572e`), and `harness` is optional when the ID is not ambiguous.
+- In `list_cross_sessions`, an absolute `workspace_path` includes subdirectories and relative text matches as a
+  substring. In every other tool it is the **exact** project path.
+- Protocol: MCP `2025-06-18`, negotiating down to `2025-03-26` and `2024-11-05`. stdout carries only (compact)
+  JSON-RPC and logs go to stderr. Tool failures come back with `isError: true`; out-of-range parameters, with error
+  `-32602`.
+
+### Resuming a session (Extended Handoff)
+
+`inject_session_context(workspace_path=P)` returns the last session of the project **before the current one**;
+`back=2…10` the earlier ones. The running session is detected as the one created after the MCP process started
+(60 s margin), so in the morning it is not mistaken for last night's.
+
+The Extended Handoff is the **only format** (8 sections): 1. Intent and scope · 2. Current state and checks ·
+3. Decisions and constraints · 4. Files, commands and artifacts · 5. Errors → fix · 6. Pending and blockers ·
+7. Immediate plan (verbatim quote of the last instruction and steps with exact commands) · 8. Suggested skills.
+
+- If it is saved and the session has not moved on, it is returned without calling Gemini; otherwise it is generated
+  in that call (1 call) and saved for the memory as well.
+- `focus_area` makes a **separate**, ephemeral call: the result is neither saved nor fed into the memory.
+- Without a key, or if Gemini fails: a local extractor with the same 8 sections, which is not saved.
+
+### Output language
+
+Set `CROSS_SESSION_LANGUAGE` to `en` (default) or `es`. It controls the handoff, the local extractor, the resume
+wrapper, MEMORY.md and the language Gemini writes in. Tool errors, logs, search results and the CLI are always in
+English. Any other value falls back to `en`.
+
+## Project memory
+
+A short memory (~100 lines) per project, distilled from the last N sessions of **every** harness. An agent entering
+the project calls `get_project_memory` and starts with the active decisions, the pitfalls already solved, the
+commands that work and what is pending.
+
+- **Project** = exact `workspace_path` (no subdirectories). **Window** = last N sessions (8 by default).
+- **Layout**: Current state · Decisions `[D#]` · Pitfalls → fix `[T#]` · Commands `[C#]` · Pending `[P#]` ·
+  AGENTS.md candidates `[A#]` · Log.
+- **How it is built** (incremental map-reduce): 1 Gemini call per new or changed session (digest = Extended Handoff +
+  structured data, saved in SQLite) + 1 consolidation call. If nothing changed, 0 calls.
+- **Automatic upkeep**: any MCP call with `workspace_path` checks the last 10 sessions of the project (not counting
+  the current one). If one has no handoff, or it moved on and has been idle for 15 min or more, the handoffs are
+  generated in the background and the memory is consolidated again; the call does not wait. A SQLite lock keeps two
+  open agents from doing it at once; after a Gemini failure that session is not retried for 30 min. Without a Gemini
+  key nothing is done.
+- **Pruning**: what no longer shows up in the window is **archived** (see it with `memory show --archived`), except
+  pinned entries (`pin`) and `A#` entries with evidence ≥ 3. Section limits and the line cap are enforced in code,
+  not decided by the model.
+- **Without a key, or if Gemini fails**: the existing memory is left untouched and an error is returned; digests
+  already generated are kept.
+- **Privacy**: secrets and personal data (email addresses and phone numbers) are replaced with `[REDACTED]` before
+  being sent to Gemini and before being saved or exported. Nothing is written to the repository unless you pass an
+  explicit path (`export`, mode `600`).
+
+```bash
+bin/cross-session-mcp memory update ~/project        # first time: up to N+1 calls; better from the CLI than MCP (timeouts)
+bin/cross-session-mcp memory show ~/project          # no LLM; warns about new sessions
+bin/cross-session-mcp memory pin D2 ~/project        # also: unpin, forget
+bin/cross-session-mcp memory export ~/project -o ~/project/.ai/MEMORY.md
+bin/cross-session-mcp memory history ~/project
+bin/cross-session-mcp memory suggest-rules ~/project --target both
+bin/cross-session-mcp memory search "docker" ~/project [--all] [--synthesize] [--limit 20]
+```
+
+Without the path, the current directory is used. From MCP the memory maintains itself; from the CLI (no background
+process) use `memory update`.
+
+> **Back it up.** `~/.ai/cross_sessions.db` holds data that **cannot be rebuilt** (digests and memory, because
+> harnesses purge old sessions). A schema migration only rebuilds the session index; memory entries are always kept.
+> Copy the file or use `memory export`; the last 20 versions per project are kept.
+
+## Connecting a harness
+
+Nothing to install. Every harness can launch the repository script directly:
+
+```
+/path/to/cross-session-mcp/bin/cross-session-mcp-server
+```
+
+> If you prefer it on your `PATH`: `uv tool install -e .` (or `pipx install -e .`) installs `cross-session-mcp` and
+> `cross-session-mcp-server`. On Ubuntu 24.04, do not `pip install` into the system Python (PEP 668).
+
+Generating a handoff with Gemini can take 10 to 60 s, so set a generous tool timeout wherever the harness allows it.
+
+### Claude Code
+
+```bash
+claude mcp add -s user cross-sessions -- /path/to/cross-session-mcp/bin/cross-session-mcp-server
+```
+
+(Optional: `export MCP_TOOL_TIMEOUT=180000` if a handoff goes over the limit.)
+
+### OpenAI Codex — `~/.codex/config.toml`
+
+```toml
+[mcp_servers.cross-sessions]
+command = "/path/to/cross-session-mcp/bin/cross-session-mcp-server"
+args = []
+startup_timeout_sec = 20
+tool_timeout_sec = 180
+```
+
+### OpenCode — `~/.config/opencode/opencode.json`
+
+```json
+{
+  "mcp": {
+    "cross-sessions": {
+      "type": "local",
+      "command": ["/path/to/cross-session-mcp/bin/cross-session-mcp-server"],
+      "enabled": true
+    }
+  }
+}
+```
+
+### Google Antigravity (IDE and `agy`) — `~/.gemini/config/mcp_config.json`
+
+A global config shared by the IDE and the CLI; check it with `agy mcp list`. In `agy -p` mode (no UI), MCP tools need
+a permission rule: add `"mcp(cross-sessions)"` to `permissions.allow` in `~/.gemini/antigravity-cli/settings.json`,
+or approve them interactively.
+
+```json
+{
+  "mcpServers": {
+    "cross-sessions": {
+      "command": "/path/to/cross-session-mcp/bin/cross-session-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+### Cursor — `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project)
+
+```json
+{
+  "mcpServers": {
+    "cross-sessions": {
+      "command": "/path/to/cross-session-mcp/bin/cross-session-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+### VS Code + Copilot — `~/.config/Code/User/mcp.json` (or `.vscode/mcp.json`)
+
+VS Code uses the `servers` key, not `mcpServers`. You can also add it with *MCP: Add Server…* from the command
+palette.
+
+```json
+{
+  "servers": {
+    "cross-sessions": {
+      "type": "stdio",
+      "command": "/path/to/cross-session-mcp/bin/cross-session-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+### Gemini CLI — `~/.gemini/settings.json`
+
+```json
+{
+  "mcpServers": {
+    "cross-sessions": {
+      "command": "/path/to/cross-session-mcp/bin/cross-session-mcp-server",
+      "timeout": 180000
+    }
+  }
+}
+```
+
+> **Do not put the Gemini key in any of these files.** The server reads it on its own (see below), so the key is not
+> copied into harness configs that are often synced, versioned or shared.
+
+## Gemini key
+
+Lookup order: `GEMINI_API_KEY` → `GOOGLE_API_KEY` → the file `~/.ai/.gemini_env` (path configurable with
+`CROSS_SESSION_KEY_FILE`).
+
+1. **Keep it in a single private file**, outside any repository:
+   ```bash
+   install -m 600 /dev/null ~/.ai/.gemini_env
+   printf 'GEMINI_API_KEY=%s\n' "$(read -rsp 'Key: ' k; echo "$k")" > ~/.ai/.gemini_env
+   ```
+   This keeps it out of the shell history. The server warns on stderr if the file is readable by other users.
+2. **Never paste it into an agent chat.** Harnesses store transcripts in plain text; if it happens, rotate the key.
+3. **Restrict the key** in Google AI Studio / Cloud Console to the *Generative Language API* and, if possible, set a
+   quota or a budget with alerts.
+4. **One key per use** (for example, one just for this server), so you can revoke it without affecting other projects
+   and see its usage separately.
+5. **Rotation**: after rotating, update only `~/.ai/.gemini_env` and run `cross-session-mcp doctor`, which confirms
+   there is a key without showing it.
+
+### Built-in protections
+
+- Before leaving for Gemini, the transcript goes through a secret filter: Google, Anthropic, OpenAI, GitHub, GitLab,
+  AWS, Slack and Stripe keys, JWTs, PEM keys, credentials in URLs and `*_KEY=`, `password:`-style assignments. The
+  model output, listings and turns go through that filter again.
+- The key travels in the `x-goog-api-key` header, never in the URL.
+- `~/.ai/cross_sessions.db` and handoffs saved with `--output` are created with mode `600`.
+- Handoffs generated without an LLM and focused handoffs are never saved.
+- Memory and digests also go through an email and phone number filter.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CROSS_SESSION_LANGUAGE` | `en` | Language of handoffs, the resume wrapper and MEMORY.md (`en` or `es`) |
+| `CROSS_SESSION_DB` | `~/.ai/cross_sessions.db` | Index and memory bank |
+| `CROSS_SESSION_KEY_FILE` | `~/.ai/.gemini_env` | File with `GEMINI_API_KEY=` |
+| `CROSS_SESSION_MODELS` | `gemini-flash-lite-latest,gemini-3.8-flash,gemini-flash-latest` | Models, in order of preference |
+| `CROSS_SESSION_TRANSCRIPT_BUDGET` | `160000` | Transcript characters sent to the model |
+| `CROSS_SESSION_MAX_OUTPUT_TOKENS` | `8192` | Maximum handoff length |
+| `CROSS_SESSION_HTTP_TIMEOUT` | `90` | Seconds per Gemini call |
+| `CROSS_SESSION_MEMORY_WINDOW` | `8` | Sessions in the memory window (1–20) |
+| `CROSS_SESSION_MEMORY_MAX_LINES` | `100` | Line cap of the rendered MEMORY.md |
+| `CROSS_SESSION_MAX_OUTPUT_CHARS` | `40000` | Character cap of any tool result |
+| `CROSS_SESSION_SYNC_TTL` / `_SYNC_LIMIT` | `60` / `50` | Re-sync interval and sessions per harness |
+| `CROSS_SESSION_EXCLUDE_WORKSPACES` | `~/.claude-mem/observer-sessions` | Paths to ignore (`:`-separated, empty = none) |
+| `CROSS_SESSION_CLAUDE_DIR`, `_AGY_DIRS`, `_OPENCODE_DB`, `_CODEX_HOME` | standard paths | Stores in non-standard locations |
+| `CROSS_SESSION_CURSOR_DIR` | `~/.config/Cursor/User` | Cursor `User` directory |
+| `CROSS_SESSION_VSCODE_DIRS` | `~/.config/{Code,Code - Insiders,VSCodium}/User` | VS Code `User` directories (`:`-separated) |
+| `ANTIGRAVITY_SDK_SITE` | — | `site-packages` of the Antigravity SDK venv (optional; REST otherwise) |
+| `CROSS_SESSION_DISABLE_SDK` | — | `1` to force REST |
+| `CROSS_SESSION_LOG_LEVEL` | `WARNING` | Log level (to stderr) |
+
+## CLI
+
+```bash
+bin/cross-session-mcp doctor                      # diagnostics (never shows secrets)
+bin/cross-session-mcp list -n 10 --sync           # recent sessions from every harness
+bin/cross-session-mcp list -w "$PWD"              # only this project and its subdirectories
+bin/cross-session-mcp show 4cbb572e -t 30 -q "schema"   # turns with that text (±1); --tools includes outputs
+bin/cross-session-mcp handoff                     # Extended Handoff of the last session in the current directory
+bin/cross-session-mcp handoff -w ~/project -b 2   # the one before; also by ID: handoff 4cbb572e
+bin/cross-session-mcp handoff 4cbb572e -f "tests" -o handoff.md   # focused: not saved
+bin/cross-session-mcp clear-cache                 # deletes saved handoffs (memory is kept)
+bin/cross-session-mcp memory --help               # project memory (see above)
+```
+
+## Development
+
+```bash
+uv sync
+uv run pytest                 # unit and protocol tests on synthetic stores (no network)
+uv run pytest -m live -s      # against this machine's real stores, and Gemini if there is a key
+uv run ruff check .
+```
+
+Layout: `readers/` (one reader per harness), `db.py` (session index and memory bank), `agent.py` (Gemini calls and
+the offline extractor), `memory.py` (deterministic consolidation and rendering), `service.py` (orchestration and
+background upkeep), `i18n.py` (output language), `server.py` (MCP over stdio) and `cli.py`.
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Security reports go through
+[SECURITY.md](SECURITY.md). Release notes live in [CHANGELOG.md](CHANGELOG.md). Licensed under the [MIT
+License](LICENSE).
+
+---
+
+**cross-session-mcp: every agent remembers what the others did.**
