@@ -10,7 +10,25 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Reinaldo Arsenio Lorenzo Trujillo", email = "reiarseni@gmail.com"}]
+keywords = ["mcp", "model-context-protocol", "claude-code", "codex", "opencode", "cursor", "copilot", "handoff", "memory", "gemini"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Utilities",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/reiarseni/cross-session-mcp"
+Issues = "https://github.com/reiarseni/cross-session-mcp/issues"
+Changelog = "https://github.com/reiarseni/cross-session-mcp/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
