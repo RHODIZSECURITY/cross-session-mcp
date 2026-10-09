@@ -1,5 +1,9 @@
 # cross-session-mcp
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
+
 **Pick up any coding session where you left it, in any agent.**
 
 An MCP server and CLI that indexes, summarizes and hands off development sessions across **Claude Code**,
