@@ -106,10 +106,11 @@ def test_exchange_rejects_bad_payload(monkeypatch):
     raise AssertionError("accepted non-object payload")
 
 
-def test_missing_client_secret_fails_before_network(monkeypatch):
+def test_missing_client_secret_fails_before_network(monkeypatch, tmp_path):
     from cross_session_mcp import antigravity as _ag
 
     monkeypatch.setattr(_ag, "CLIENT_SECRET", "")
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_SECRET_FILE", str(tmp_path / "none"))
     calls = []
 
     def boom(req, timeout):
@@ -124,6 +125,24 @@ def test_missing_client_secret_fails_before_network(monkeypatch):
         assert not calls
         return
     raise AssertionError("refresh without client secret must fail")
+
+
+def test_secret_file_fallback(monkeypatch, tmp_path):
+    from cross_session_mcp import antigravity as _ag
+
+    monkeypatch.setattr(_ag, "CLIENT_SECRET", "")
+    secret_file = tmp_path / "sec.env"
+    secret_file.write_text('export GOOGLE_ANTIGRAVITY_CLIENT_SECRET="file-secret"\n')
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_SECRET_FILE", str(secret_file))
+
+    def fake_urlopen(req, timeout):
+        body = dict(urllib.parse.parse_qsl(req.data.decode()))
+        assert body.get("client_secret") == "file-secret"
+        return token_payload()
+
+    monkeypatch.setattr(_ag.urllib.request, "urlopen", fake_urlopen)
+    out = _ag.refresh_access("ref-x")
+    assert out["access"] == "acc-1"
 
 
 def test_malformed_cred_ignored(tmp_path):
