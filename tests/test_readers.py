@@ -1,6 +1,8 @@
 """Tests for the session readers against synthetic stores."""
 
 import json
+import shutil
+import sys
 
 import pytest
 
@@ -11,7 +13,21 @@ from cross_session_mcp.readers.codex import CodexSessionReader
 from cross_session_mcp.readers.copilot import CopilotSessionReader, replay_operations
 from cross_session_mcp.readers.cursor import CursorSessionReader
 from cross_session_mcp.readers.opencode import OpenCodeSessionReader
-from tests.conftest import WORKSPACE
+from tests.conftest import WORKSPACE, make_copilot_store, make_cursor_store
+
+_STORE_VARS = ("CROSS_SESSION_CLAUDE_DIR", "CROSS_SESSION_AGY_DIRS", "CROSS_SESSION_OPENCODE_DB",
+               "CROSS_SESSION_CODEX_HOME", "CROSS_SESSION_CURSOR_DIR", "CROSS_SESSION_VSCODE_DIRS")
+
+
+@pytest.fixture
+def fake_home(tmp_path, monkeypatch):
+    """An empty HOME with none of the store overrides set."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for var in _STORE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return home
 
 
 def test_registry():
@@ -184,3 +200,32 @@ def test_replay_operations():
         {"kind": 2, "k": ["new"], "v": [1]},
     ])
     assert state == {"a": {"list": [1, 9]}, "new": [1]}
+
+
+@pytest.mark.parametrize("platform, config", [("darwin", "Library/Application Support"), ("linux", ".config")])
+def test_cursor_and_copilot_default_paths(fake_home, tmp_path, monkeypatch, platform, config):
+    monkeypatch.setattr(sys, "platform", platform)
+    shutil.move(make_cursor_store(tmp_path / "src"), fake_home / config / "Cursor" / "User")
+    shutil.move(make_copilot_store(tmp_path / "src"), fake_home / config / "Code" / "User")
+
+    cursor = CursorSessionReader().list_sessions()
+    assert [s.session_id for s in cursor] == ["cursor-sess-1", "cursor-old"]
+    assert cursor[0].workspace_path == WORKSPACE
+    assert [s.session_id for s in CopilotSessionReader().list_sessions()] == ["copilot-sess-1", "copilot-old"]
+
+
+def test_store_overrides_win_on_macos(fake_home, tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    cursor_user = make_cursor_store(tmp_path / "custom")
+    copilot_user = make_copilot_store(tmp_path / "custom")
+    shutil.copytree(cursor_user, fake_home / "Library" / "Application Support" / "Cursor" / "User")
+    monkeypatch.setenv("CROSS_SESSION_CURSOR_DIR", str(cursor_user))
+    monkeypatch.setenv("CROSS_SESSION_VSCODE_DIRS", str(copilot_user))
+    assert CursorSessionReader().user_dir == cursor_user
+    assert len(CopilotSessionReader().list_sessions()) == 2
+
+
+def test_empty_home_lists_nothing(fake_home):
+    for r in get_all_readers():
+        assert r.can_read() is False
+        assert r.list_sessions() == []

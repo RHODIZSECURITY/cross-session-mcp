@@ -1,10 +1,12 @@
 """Tests for date normalization, secret redaction and filters."""
 
 import datetime
+import sys
 
 import pytest
 
 from cross_session_mcp.utils import (
+    config_home,
     is_safe_session_id,
     redact,
     to_utc_iso,
@@ -128,3 +130,11 @@ def test_redact_pii_positive(text):
 ])
 def test_redact_pii_no_false_positives(text):
     assert redact_pii(text) == text
+
+
+@pytest.mark.parametrize("platform, expected", [("darwin", "Library/Application Support"), ("linux", ".config"),
+                                                ("win32", ".config")])
+def test_config_home(tmp_path, monkeypatch, platform, expected):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(sys, "platform", platform)
+    assert config_home() == tmp_path / expected

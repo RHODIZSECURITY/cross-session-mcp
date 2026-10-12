@@ -1,6 +1,7 @@
 """Session reader for GitHub Copilot Chat in VS Code.
 
-Location: `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/<id>.jsonl|.json`
+Location: `<config>/Code/User/workspaceStorage/<hash>/chatSessions/<id>.jsonl|.json`, where `<config>`
+is `~/.config` on Linux and `~/Library/Application Support` on macOS
 (+ `globalStorage/emptyWindowChatSessions/` for windows without a folder). The workspace
 of each `<hash>` is in `workspaceStorage/<hash>/workspace.json`.
 
@@ -21,6 +22,7 @@ from typing import Any
 from cross_session_mcp.models import SessionDetail, SessionSummary, SessionTurn
 from cross_session_mcp.readers.base import TEXT_TURN_LIMIT, BaseSessionReader
 from cross_session_mcp.utils import (
+    config_home,
     file_uri_to_path,
     is_excluded_workspace,
     is_safe_session_id,
@@ -35,7 +37,7 @@ def default_vscode_user_dirs() -> list[Path]:
     env = os.environ.get("CROSS_SESSION_VSCODE_DIRS")
     if env:
         return [Path(p).expanduser() for p in env.split(os.pathsep) if p.strip()]
-    config = Path.home() / ".config"
+    config = config_home()
     return [config / name / "User" for name in ("Code", "Code - Insiders", "VSCodium")]
 
 

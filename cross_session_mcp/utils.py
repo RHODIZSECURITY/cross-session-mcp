@@ -4,6 +4,7 @@ import datetime
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -199,6 +200,13 @@ def workspace_matches(filter_value: str | None, workspace: str) -> bool:
     if f.startswith("/"):
         return workspace == f or workspace.startswith(f + "/")
     return f.lower() in workspace.lower()
+
+
+def config_home() -> Path:
+    """Folder where desktop apps keep their settings: `~/Library/Application Support` on macOS, `~/.config` elsewhere."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    return Path.home() / ".config"
 
 
 def env_path(var: str, default: Path) -> Path:

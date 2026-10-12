@@ -95,3 +95,19 @@ def test_show_query_and_tools(patched, capsys):
     assert "Refactor utils.py" in out and "3 passed" not in out
     run_cli("show", "oc-sess-1", "--tools")
     assert "3 passed" in capsys.readouterr().out
+
+
+def test_doctor_with_empty_home(tmp_path, monkeypatch, capsys):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for var in ("CROSS_SESSION_CLAUDE_DIR", "CROSS_SESSION_AGY_DIRS", "CROSS_SESSION_OPENCODE_DB",
+                "CROSS_SESSION_CODEX_HOME", "CROSS_SESSION_CURSOR_DIR", "CROSS_SESSION_VSCODE_DIRS"):
+        monkeypatch.delenv(var, raising=False)
+    svc = CrossSessionService(db=CrossSessionDB(tmp_path / "doctor.db"), agent=FakeAgent())
+    with pytest.raises(SystemExit) as exc:
+        cli.cmd_doctor(svc, None)
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    for name in ("claude", "agy", "opencode", "codex", "cursor", "copilot"):
+        assert f"➖ {name:<9} not found" in out

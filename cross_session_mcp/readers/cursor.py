@@ -1,6 +1,7 @@
 """Session reader for the Cursor agent/chat (Composer).
 
-Location: `~/.config/Cursor/User/globalStorage/state.vscdb`, table `cursorDiskKV`:
+Location: `<config>/Cursor/User/globalStorage/state.vscdb`, where `<config>` is `~/.config` on Linux
+and `~/Library/Application Support` on macOS. Table `cursorDiskKV`:
 - `composerData:<composerId>` → metadata (name, createdAt, lastUpdatedAt) and the message
   order in `fullConversationHeadersOnly` (current format) or the full messages in
   `conversation` (legacy format).
@@ -18,6 +19,7 @@ from typing import Any
 from cross_session_mcp.models import SessionDetail, SessionSummary, SessionTurn
 from cross_session_mcp.readers.base import TEXT_TURN_LIMIT, TOOL_TURN_LIMIT, BaseSessionReader
 from cross_session_mcp.utils import (
+    config_home,
     env_path,
     file_uri_to_path,
     is_excluded_workspace,
@@ -47,7 +49,7 @@ class CursorSessionReader(BaseSessionReader):
     name = "cursor"
 
     def __init__(self, user_dir: Path | None = None):
-        self.user_dir = user_dir or env_path("CROSS_SESSION_CURSOR_DIR", Path.home() / ".config" / "Cursor" / "User")
+        self.user_dir = user_dir or env_path("CROSS_SESSION_CURSOR_DIR", config_home() / "Cursor" / "User")
         self.db_path = self.user_dir / "globalStorage" / "state.vscdb"
 
     def can_read(self) -> bool:
