@@ -395,7 +395,7 @@ class MCPServer:
     def run_stdio(self) -> None:
         """Starts on stdio, shielding stdout from writes outside the protocol."""
         protocol_fd = os.dup(sys.stdout.fileno())
-        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())  # fd 1 -> stderr (subprocesos, C, print)
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())  # fd 1 -> stderr (subprocesses, C, print)
         sys.stdout = sys.stderr
         protocol_out = io.TextIOWrapper(os.fdopen(protocol_fd, "wb"), encoding="utf-8", newline="\n")
         stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")

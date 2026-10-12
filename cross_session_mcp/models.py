@@ -13,7 +13,7 @@ class SessionSummary:
     Every date is ISO 8601 UTC (see utils.to_utc_iso).
     """
     session_id: str
-    harness: str  # ver HARNESSES
+    harness: str  # see HARNESSES
     workspace_path: str
     title: str
     created_at: str | None = None

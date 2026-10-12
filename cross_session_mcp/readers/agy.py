@@ -36,7 +36,7 @@ def default_agy_dirs() -> list[Path]:
 
 
 def parse_workspace_uris(raw: Any) -> str:
-    """'["file:///a/b"]' | 'file:///a/b,file:///c' -> '/a/b' (primer workspace)."""
+    """'["file:///a/b"]' | 'file:///a/b,file:///c' -> '/a/b' (first workspace)."""
     if not raw:
         return ""
     uris: list[str] = []
