@@ -91,6 +91,9 @@ def test_offline_handoff_in_spanish(monkeypatch):
     md = build_offline_handoff(make_detail(), focus_area="tests")
     assert "### 7. Plan inmediato" in md and "Foco solicitado: tests" in md
     assert has_handoff_sections(md)
+    assert "no hay clave de Gemini" in md and "GEMINI_API_KEY" in md
+    failed = build_offline_handoff(make_detail(), reason="llm_failed")
+    assert "la API de Gemini falló" in failed and "GEMINI_API_KEY" not in failed
 
 
 @pytest.mark.parametrize("value,expected", [

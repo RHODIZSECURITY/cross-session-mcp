@@ -227,22 +227,23 @@ class CrossSessionService:
                                  generated_at or now_utc_iso(), from_cache=from_cache, focus_area=focus,
                                  source_updated_at=s.updated_at)
 
+        has_key = getattr(self.agent, "available", True)
+        reason, offline_model = ("llm_failed", "offline-fallback") if has_key else ("no_key", "offline-extractor")
         if focus:
             out = self.agent.generate_focused_handoff(detail, focus)
             if out:
                 return result(out[0], out[1])
-            return result(build_offline_handoff(detail, focus), "offline-extractor")
+            return result(build_offline_handoff(detail, focus, reason), offline_model)
 
         if not force_refresh:
             cached = self.db.get_digest(s.session_id, s.harness, s.updated_at)
             if cached:
                 return result(cached["handoff_md"], cached["model_used"], from_cache=True, generated_at=cached["generated_at"])
-        digest = self.agent.generate_digest(detail) if getattr(self.agent, "available", True) else None
+        digest = self.agent.generate_digest(detail) if has_key else None
         if digest:
             saved = self._save_digest(s, digest)
             return result(saved["handoff_md"], saved["model_used"])
-        model = "offline-fallback" if getattr(self.agent, "available", True) else "offline-extractor"
-        return result(build_offline_handoff(detail), model)
+        return result(build_offline_handoff(detail, reason=reason), offline_model)
 
     # ------------------------------------------------------------------ project memory
     @staticmethod

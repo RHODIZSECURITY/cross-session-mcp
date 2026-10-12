@@ -23,8 +23,12 @@ _TEXT = {
         "handoff_title": "Extended Handoff",
         "untitled": "untitled",
         "open_question": "Question left open when the session ended, unanswered: “{question}”",
-        "offline_notice": ("> Generated without a language model (no Gemini key or the API failed); not saved. "
+        "offline_notice": ("> Generated without a language model (the Gemini API failed); not saved. "
                            "For more detail use `get_session_turns` with `query`."),
+        "offline_notice_no_key": ("> Generated without a language model because there is no Gemini key; not saved. "
+                                  "Set `GEMINI_API_KEY` or `~/.ai/.gemini_env` so a model summarizes the session "
+                                  "and the agent does not have to read the transcript. "
+                                  "For more detail use `get_session_turns` with `query`."),
         "offline_title": "Recorded title",
         "offline_focus": "Requested focus",
         "offline_first": "First user instruction",
@@ -71,8 +75,12 @@ _TEXT = {
         "handoff_title": "Handoff Ampliado",
         "untitled": "sin título",
         "open_question": "Pregunta abierta al cierre de la sesión, sin respuesta: «{question}»",
-        "offline_notice": ("> Generado sin modelo de lenguaje (no hay clave de Gemini o la API falló); no se guarda. "
+        "offline_notice": ("> Generado sin modelo de lenguaje (la API de Gemini falló); no se guarda. "
                            "Para más detalle use `get_session_turns` con `query`."),
+        "offline_notice_no_key": ("> Generado sin modelo de lenguaje porque no hay clave de Gemini; no se guarda. "
+                                  "Configure `GEMINI_API_KEY` o `~/.ai/.gemini_env` para que un modelo resuma la "
+                                  "sesión y el agente no tenga que leer la transcripción. "
+                                  "Para más detalle use `get_session_turns` con `query`."),
         "offline_title": "Título registrado",
         "offline_focus": "Foco solicitado",
         "offline_first": "Primera instrucción del usuario",

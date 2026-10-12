@@ -135,7 +135,8 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     if key:
         print("  ✅ Key configured (value not shown)")
     else:
-        print("  ⚠️  No key: the local extractor will be used (set GEMINI_API_KEY or ~/.ai/.gemini_env)")
+        print("  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
+              "      Set GEMINI_API_KEY or ~/.ai/.gemini_env.")
     print(f"  Models: {', '.join(configured_models())}")
     print(f"  Antigravity SDK: {'available' if HAS_ANTIGRAVITY_SDK else 'not installed (REST is used)'}")
 

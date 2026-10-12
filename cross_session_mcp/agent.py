@@ -707,8 +707,11 @@ class GeminiHandoffAgent:
 # -----------------------------------------------------------------------------
 # LOCAL EXTRACTOR (no LLM): same 8 sections, never saved
 # -----------------------------------------------------------------------------
-def build_offline_handoff(detail: SessionDetail, focus_area: str = "") -> str:
-    """Basic Extended Handoff built from local data, with the 8 sections of the single format."""
+def build_offline_handoff(detail: SessionDetail, focus_area: str = "", reason: str = "no_key") -> str:
+    """Basic Extended Handoff built from local data, with the 8 sections of the single format.
+
+    `reason` is `no_key` (the notice explains how to set the key) or `llm_failed`.
+    """
     t = i18n.t
     sections = i18n.handoff_sections()
     s = detail.summary
@@ -724,7 +727,8 @@ def build_offline_handoff(detail: SessionDetail, focus_area: str = "") -> str:
     last = truncate(clean_text(prompts[-1]), 600).replace("\n", " ") if prompts else ""
     quote = f"> {last}\n" if last else ""
     title = clean_text(s.title)
-    return f"""{t('offline_notice')}
+    notice = t("offline_notice_no_key") if reason == "no_key" else t("offline_notice")
+    return f"""{notice}
 
 {sections[0]}
 - {t('offline_title')}: **{title}**{focus}

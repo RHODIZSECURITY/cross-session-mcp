@@ -112,6 +112,26 @@ def test_offline_handoff_without_key_is_not_saved(bank):
     h = bank.get_handoff(workspace=WORKSPACE)
     assert h.model_used == "offline-extractor" and "### 7. Immediate plan" in h.markdown_handoff
     assert bank.db.digest_format_counts()["current"] == 0
+    assert "GEMINI_API_KEY" in h.markdown_handoff  # explains how to set the key
+
+
+def test_offline_handoff_after_llm_failure_does_not_ask_for_a_key(bank, monkeypatch):
+    bank.agent.fail_digest_for = {s.session_id for s in bank.list_sessions(workspace=WORKSPACE)}
+    h = bank.get_handoff(workspace=WORKSPACE)
+    assert h.model_used == "offline-fallback" and "the Gemini API failed" in h.markdown_handoff
+    assert "GEMINI_API_KEY" not in h.markdown_handoff
+    assert bank.db.digest_format_counts()["current"] == 0
+
+    monkeypatch.setattr(bank.agent, "generate_focused_handoff", lambda detail, focus: None)
+    focused = bank.get_handoff(workspace=WORKSPACE, focus_area="tests")
+    assert focused.model_used == "offline-fallback" and "GEMINI_API_KEY" not in focused.markdown_handoff
+
+
+def test_offline_focused_handoff_without_key_explains_the_key(bank, monkeypatch):
+    bank.agent.available = False
+    monkeypatch.setattr(bank.agent, "generate_focused_handoff", lambda detail, focus: None)
+    h = bank.get_handoff(workspace=WORKSPACE, focus_area="tests")
+    assert h.model_used == "offline-extractor" and "GEMINI_API_KEY" in h.markdown_handoff
 
 
 def test_resume_regenerates_stale_handoff_even_if_recently_active(bank):

@@ -97,13 +97,16 @@ def test_show_query_and_tools(patched, capsys):
     assert "3 passed" in capsys.readouterr().out
 
 
-def test_doctor_with_empty_home(tmp_path, monkeypatch, capsys):
+def test_doctor_with_empty_home_and_no_key(tmp_path, monkeypatch, capsys):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     for var in ("CROSS_SESSION_CLAUDE_DIR", "CROSS_SESSION_AGY_DIRS", "CROSS_SESSION_OPENCODE_DB",
                 "CROSS_SESSION_CODEX_HOME", "CROSS_SESSION_CURSOR_DIR", "CROSS_SESSION_VSCODE_DIRS"):
         monkeypatch.delenv(var, raising=False)
+    for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "missing"))
     svc = CrossSessionService(db=CrossSessionDB(tmp_path / "doctor.db"), agent=FakeAgent())
     with pytest.raises(SystemExit) as exc:
         cli.cmd_doctor(svc, None)
@@ -111,3 +114,4 @@ def test_doctor_with_empty_home(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     for name in ("claude", "agy", "opencode", "codex", "cursor", "copilot"):
         assert f"➖ {name:<9} not found" in out
+    assert "No key" in out and "the project memory cannot be built" in out
