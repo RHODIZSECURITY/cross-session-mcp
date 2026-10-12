@@ -95,11 +95,11 @@ _SECRET_PATTERNS = [
     (re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/@]+:)[^\s@/]+(@)"), r"\1" + REDACTED + r"\2"),
     # Sensitive query parameters: ?key=... &token=...
     (re.compile(r"([?&](?:key|api_key|apikey|token|access_token|secret)=)[^&\s\"']+", re.I), r"\1" + REDACTED),
-    # Cabeceras Authorization: Bearer ...
+    # Authorization: Bearer ... headers
     (re.compile(r"(\bBearer\s+)[A-Za-z0-9._~+/=-]{16,}", re.I), r"\1" + REDACTED),
-    # Proveedores conocidos
+    # Known providers
     (re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"), REDACTED),  # Google API key
-    (re.compile(r"\bAQ\.[A-Za-z0-9_-]{20,}"), REDACTED),  # Google (formato AQ.)
+    (re.compile(r"\bAQ\.[A-Za-z0-9_-]{20,}"), REDACTED),  # Google (AQ. format)
     (re.compile(r"\bya29\.[A-Za-z0-9_-]{20,}"), REDACTED),  # Google OAuth access token
     (re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"), REDACTED),  # Anthropic / OpenAI
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}"), REDACTED),  # GitHub
@@ -109,6 +109,17 @@ _SECRET_PATTERNS = [
     (re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}"), REDACTED),  # Slack
     (re.compile(r"\b(?:sk|rk|pk)_live_[A-Za-z0-9]{20,}"), REDACTED),  # Stripe
     (re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"), REDACTED),  # JWT
+    (re.compile(r"\bhf_[A-Za-z0-9]{30,}"), REDACTED),  # Hugging Face
+    (re.compile(r"\bnpm_[A-Za-z0-9]{36,}"), REDACTED),  # npm
+    (re.compile(r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}"), REDACTED),  # PyPI
+    (re.compile(r"\bdo[por]_v1_[a-f0-9]{64}"), REDACTED),  # DigitalOcean
+    (re.compile(r"\bsntry[su]_[A-Za-z0-9+/=_-]{40,}"), REDACTED),  # Sentry
+    (re.compile(r"\bgsk_[A-Za-z0-9]{40,}"), REDACTED),  # Groq
+    (re.compile(r"\bxai-[A-Za-z0-9]{40,}"), REDACTED),  # xAI
+    (re.compile(r"\br8_[A-Za-z0-9]{30,}"), REDACTED),  # Replicate
+    (re.compile(r"\blin_api_[A-Za-z0-9]{30,}"), REDACTED),  # Linear
+    (re.compile(r"\bshp(?:at|ca|pa|ss)_[a-fA-F0-9]{32}"), REDACTED),  # Shopify
+    (re.compile(r"\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"), REDACTED),  # SendGrid
     # Generic assignments: FOO_API_KEY=value, password: value, "secret": "value"
     (
         re.compile(

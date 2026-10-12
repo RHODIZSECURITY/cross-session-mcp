@@ -262,8 +262,9 @@ Lookup order: `GEMINI_API_KEY` → `GOOGLE_API_KEY` → the file `~/.ai/.gemini_
 
 ### Built-in protections
 
-- Before leaving for Gemini, the transcript goes through a secret filter: Google, Anthropic, OpenAI, GitHub, GitLab,
-  AWS, Slack and Stripe keys, JWTs, PEM keys, credentials in URLs and `*_KEY=`, `password:`-style assignments. The
+- Before leaving for Gemini, the transcript goes through a secret filter: Google, Anthropic, OpenAI, OpenRouter,
+  GitHub, GitLab, AWS, Slack, Stripe, Hugging Face, npm, PyPI, DigitalOcean, Sentry, Groq, xAI, Replicate, Linear,
+  Shopify and SendGrid keys, JWTs, PEM keys, credentials in URLs and `*_KEY=`, `password:`-style assignments. The
   model output, listings and turns go through that filter again.
 - The key travels in the `x-goog-api-key` header, never in the URL.
 - `~/.ai/cross_sessions.db` and handoffs saved with `--output` are created with mode `600`.
