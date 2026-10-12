@@ -22,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from cross_session_mcp import antigravity as antigravity_mod
 from cross_session_mcp import i18n
 from cross_session_mcp.models import SessionDetail, SessionTurn
 from cross_session_mcp.utils import clean_text, logger, now_utc_iso, redact, redact_pii, truncate
@@ -612,12 +613,25 @@ def get_gemini_api_key() -> str | None:
     return None
 
 
+def _parse_candidates(model: str, data: Any) -> tuple[str, str] | None:
+    """Extracts (text, finishReason) from a Gemini-format payload. None when empty."""
+    candidates = data.get("candidates") or []
+    if not candidates:
+        reason = (data.get("promptFeedback") or {}).get("blockReason", "no candidates")
+        logger.warning("Gemini %s returned no answer: %s", model, reason)
+        return None
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+    return (text, candidates[0].get("finishReason") or "") if text else None
+
+
 class GeminiHandoffAgent:
     """Extended Handoff generator through the Google Antigravity SDK or Gemini REST."""
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or get_gemini_api_key()
         self.oauth = OAuthTokenCache(load_adc())
+        self.cca = antigravity_mod.AntigravityAuth(antigravity_mod.load_cred())
         project = os.environ.get(GOOGLE_PROJECT_ENV_VAR, "").strip()
         if re.search(r"[\r\n]", project):
             logger.warning("CROSS_SESSION_GOOGLE_PROJECT contains a line break; ignoring it")
@@ -690,8 +704,58 @@ class GeminiHandoffAgent:
                         return json.loads(response.read().decode("utf-8"))
             raise
 
+    def _call_model_cca(self, model: str, payload: dict) -> tuple[str, str] | None:
+        """One Cloud Code Assist request (Antigravity OAuth). Returns (text, finishReason) or None."""
+        token = self.cca.token(self.timeout)
+        if not token:
+            return None
+        envelope = antigravity_mod.cca_envelope(model, payload, self.cca.project)
+        data_bytes = json.dumps(envelope).encode("utf-8")
+        url = f"{antigravity_mod.api_base()}/{antigravity_mod.API_VERSION}:generateContent"
+        try:
+            data = self._post_cca(url, data_bytes, token, refresh_on_401=True)
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                pass
+            logger.warning("Antigravity %s answered HTTP %s: %s", model, exc.code, redact(body))
+            return None
+        except Exception as exc:
+            logger.warning("Antigravity %s failed (%s): %s", model, type(exc).__name__, redact(str(exc)))
+            return None
+        unwrapped = antigravity_mod.cca_unwrap(data)
+        if unwrapped is None:
+            logger.warning("Antigravity %s response missing response wrapper", model)
+            return None
+        return _parse_candidates(model, unwrapped)
+
+    def _post_cca(self, url: str, data_bytes: bytes, token: str, refresh_on_401: bool) -> dict[str, Any]:
+        """POSTs a CCA envelope and returns decoded JSON. On 401, refreshes once and retries."""
+        req = urllib.request.Request(
+            url, data=data_bytes, headers=antigravity_mod.cca_headers(token), method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if refresh_on_401 and exc.code == 401:
+                self.cca.invalidate()
+                retry_token = self.cca.token(self.timeout)
+                if retry_token:
+                    retry = urllib.request.Request(
+                        url, data=data_bytes,
+                        headers=antigravity_mod.cca_headers(retry_token), method="POST",
+                    )
+                    with urllib.request.urlopen(retry, timeout=self.timeout) as response:
+                        return json.loads(response.read().decode("utf-8"))
+            raise
+
     def _call_model(self, model: str, payload: dict) -> tuple[str, str] | None:
         """One REST request to `model`. Returns (text, finishReason) or None on failure."""
+        if self.cca.configured and not self.api_key and not self.oauth.configured:
+            return self._call_model_cca(model, payload)
         headers = self._auth_headers()
         if headers is None:
             return None
@@ -710,14 +774,7 @@ class GeminiHandoffAgent:
             logger.warning("Gemini %s failed (%s): %s", model, type(exc).__name__, redact(str(exc)))
             return None
 
-        candidates = data.get("candidates") or []
-        if not candidates:
-            reason = (data.get("promptFeedback") or {}).get("blockReason", "no candidates")
-            logger.warning("Gemini %s returned no answer: %s", model, reason)
-            return None
-        parts = (candidates[0].get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
-        return (text, candidates[0].get("finishReason") or "") if text else None
+        return _parse_candidates(model, data)
 
     def _generate_markdown(self, system_prompt: str, prompt: str) -> tuple[str | None, str]:
         """Free Markdown output: the Antigravity SDK when available, otherwise the chain of REST models."""
@@ -783,7 +840,7 @@ class GeminiHandoffAgent:
     # ------------------------------------------------------------------ project memory
     @property
     def available(self) -> bool:
-        return bool(self.api_key or self.oauth.configured)
+        return bool(self.api_key or self.oauth.configured or self.cca.configured)
 
     @staticmethod
     def _transcript_fields(detail: SessionDetail) -> dict[str, Any]:

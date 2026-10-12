@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from cross_session_mcp import __version__
+from cross_session_mcp import antigravity as antigravity_mod
 from cross_session_mcp.agent import HAS_ANTIGRAVITY_SDK, configured_models, get_gemini_api_key, load_adc
 from cross_session_mcp.models import HARNESSES
 from cross_session_mcp.readers import get_all_readers
@@ -137,9 +138,15 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     elif load_adc() is not None:
         print("  ✅ OAuth (ADC) configured, no API key needed (secrets not shown)")
     else:
-        print("  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
-              "      Set GEMINI_API_KEY or ~/.ai/.gemini_env, or log in with "
-              "`gcloud auth application-default-login` (OAuth, no key).")
+        cca = antigravity_mod.load_cred()
+        if cca is not None:
+            print(f"  ✅ OAuth (Antigravity) configured for {cca.get('email') or 'account'} "
+                  f"(project {cca['project_id']}, secrets not shown)")
+        else:
+            print("  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
+                  "      Set GEMINI_API_KEY or ~/.ai/.gemini_env, log in with "
+                  "`gcloud auth application-default-login` (OAuth), or run "
+                  "`cross-session-mcp antigravity-login` (Google account, no key).")
     print(f"  Models: {', '.join(configured_models())}")
     print(f"  Antigravity SDK: {'available' if HAS_ANTIGRAVITY_SDK else 'not installed (REST is used)'}")
 
@@ -148,6 +155,35 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     print(f"  Repository script: {LAUNCHER} {'✅' if LAUNCHER.exists() else '❌'}")
     print(f"  On PATH: {installed or 'no (optional: uv tool install -e .)'}")
     sys.exit(0 if ok else 1)
+
+
+def cmd_antigravity_login(svc: CrossSessionService, args) -> None:
+    """Google login for Cloud Code Assist (Antigravity OAuth, no API key)."""
+    url, verifier = antigravity_mod.build_auth_url()
+    print("Open this URL in your browser and consent with your Google account,")
+    print("then paste back the `code=` value from the address bar (nothing is shown yet).\n")
+    print(f"  {url}\n")
+    try:
+        pasted = input("Paste the redirect URL or code: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nLogin cancelled.")
+        sys.exit(1)
+    try:
+        code = antigravity_mod.extract_code(pasted)
+        creds = antigravity_mod.exchange_code(code, verifier)
+    except ValueError as exc:
+        print(f"Login failed: {exc}")
+        sys.exit(1)
+    print("Code exchanged. Discovering Cloud Code Assist project...")
+    project = antigravity_mod.discover_project(creds["access"])
+    if not project:
+        print("Login failed: no Cloud Code Assist project for this account. "
+              "Ensure the account has Antigravity/Cloud Code Assist access and try again.")
+        sys.exit(1)
+    cred_file = antigravity_mod.save_cred(creds["refresh"], project, creds.get("email", ""))
+    print(f"✅ Antigravity login saved for {creds.get('email') or 'account'} "
+          f"(project {project}) to {cred_file}")
+    sys.exit(0)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -226,6 +262,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="Diagnose the installation without showing secrets")
     p.set_defaults(func=cmd_doctor)
 
+    p = sub.add_parser("antigravity-login", help="Log in with a Google account for Cloud Code Assist (no API key)")
+    p.set_defaults(func=cmd_antigravity_login)
     p = sub.add_parser("serve", help="Start the MCP server over stdio")
     p.set_defaults(func=cmd_serve)
     return parser

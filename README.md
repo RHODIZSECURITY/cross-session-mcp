@@ -376,6 +376,29 @@ Precedence: an explicit API key (`GEMINI_API_KEY` / `GOOGLE_API_KEY` / file) sti
 when set; OAuth is the fallback. On a 401 the server refreshes the token once and retries.
 Path override: `CROSS_SESSION_ADC_FILE`.
 
+### Antigravity login (Google account, no API key, no gcloud)
+
+If you use Google Antigravity / Cloud Code Assist with your Google account, the server can
+reuse that login instead of any key or gcloud installation. The mechanism mirrors
+lidge-jun/opencodex (MIT): standard Google OAuth (PKCE) with the public OAuth client
+identifiers embedded in the Antigravity desktop client, then project discovery via
+`loadCodeAssist` (`onboardUser` fallback). Requests go to Cloud Code Assist
+(`cloudcode-pa.googleapis.com/v1internal`), never to the Developer API:
+
+First export the desktop client secret (public identifier embedded in the Antigravity app;
+read it from `src/oauth/google-antigravity.ts` in lidge-jun/opencodex — never commit it):
+
+```bash
+export GOOGLE_ANTIGRAVITY_CLIENT_SECRET="..."
+cross-session-mcp antigravity-login
+```
+
+Open the printed URL in your browser, consent, and paste back the `code=` value from the
+address bar. The credential (refresh token + discovered project) is stored with mode 600
+in `~/.ai/antigravity_adc.json` (`CROSS_SESSION_ANTIGRAVITY_FILE` override). Precedence:
+explicit API key first, then ADC file, then Antigravity. On a 401 the token refreshes once
+and the call retries. This transport lives in this fork only.
+
 ### Built-in protections
 
 - Before leaving for Gemini, the transcript goes through a secret filter: Google, Anthropic, OpenAI, OpenRouter,
@@ -396,6 +419,7 @@ Path override: `CROSS_SESSION_ADC_FILE`.
 | `CROSS_SESSION_KEY_FILE` | `~/.ai/.gemini_env` | File with `GEMINI_API_KEY=` |
 | `CROSS_SESSION_ADC_FILE` | `~/.config/gcloud/application_default_credentials.json` | OAuth credential file (no API key needed) |
 | `CROSS_SESSION_GOOGLE_PROJECT` | — | Cloud project billed for quota (paid-tier terms) |
+| `CROSS_SESSION_ANTIGRAVITY_FILE` | `~/.ai/antigravity_adc.json` | Antigravity OAuth credential (no key, no gcloud) |
 | `CROSS_SESSION_MODELS` | `gemini-flash-lite-latest,gemini-3.8-flash,gemini-flash-latest` | Models, in order of preference |
 | `CROSS_SESSION_TRANSCRIPT_BUDGET` | `160000` | Transcript characters sent to the model |
 | `CROSS_SESSION_MAX_OUTPUT_TOKENS` | `8192` | Maximum handoff length |

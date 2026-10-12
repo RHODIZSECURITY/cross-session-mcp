@@ -272,8 +272,8 @@ class CrossSessionService:
         if not getattr(self.agent, "available", True):
             raise SessionError(
                 "The project memory needs the LLM and there is no Gemini credential: set GEMINI_API_KEY, "
-                "~/.ai/.gemini_env, or OAuth via `gcloud auth application-default-login`. "
-                "The existing memory was not modified."
+                "~/.ai/.gemini_env, OAuth via `gcloud auth application-default-login`, or "
+                "`cross-session-mcp antigravity-login`. The existing memory was not modified."
             )
 
     def _generate_missing_digests(self, pending: list[SessionSummary]) -> tuple[int, list[str], list[SessionSummary]]:
@@ -462,8 +462,8 @@ class CrossSessionService:
                         "Check again in a few minutes.")
             if not getattr(self.agent, "available", True):
                 return (f"No memory saved for `{ws}` and no Gemini credential to generate it: set "
-                        "GEMINI_API_KEY, ~/.ai/.gemini_env, or OAuth via "
-                        "`gcloud auth application-default-login`.")
+                        "GEMINI_API_KEY, ~/.ai/.gemini_env, OAuth via `gcloud auth application-default-login`, or "
+                        "`cross-session-mcp antigravity-login`.")
             return self._no_memory_text(ws)
         saved = {(w["key"], w.get("updated_at") or "") for w in mem["window"]}
         current = self.recent_sessions(ws, max(len(mem["window"]), 1))
