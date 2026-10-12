@@ -363,3 +363,60 @@ def test_key_401_never_falls_through(monkeypatch, tmp_path):
     agent = GeminiHandoffAgent()
     assert agent._generate_markdown("sys", "prompt") == (None, "")
     assert all("cloudcode-pa" not in h for h in hits)
+
+
+def _http_429(url):
+    return urllib.error.HTTPError(url, 429, "Too Many Requests", {}, io.BytesIO(b'{"error":{}}'))
+
+
+def test_cca_429_retries_with_backoff_then_succeeds(monkeypatch, tmp_path):
+    agent = _agent_with_cca(monkeypatch, tmp_path)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            return token_payload()
+        calls.append(req.full_url)
+        if len(calls) <= 2:
+            raise _http_429(req.full_url)
+        return _gemini_ok("after-backoff")
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    text, _ = agent._generate_markdown("sys", "prompt")
+    assert text == "after-backoff"
+    assert sleeps == [5, 15]
+    assert len(calls) == 3
+
+
+def test_cca_429_exhausted_gives_up(monkeypatch, tmp_path):
+    agent = _agent_with_cca(monkeypatch, tmp_path)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            return token_payload()
+        raise _http_429(req.full_url)
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    assert agent._generate_markdown("sys", "prompt") == (None, "")
+    assert sleeps == [5, 15]
+
+
+def test_cca_400_does_not_retry(monkeypatch, tmp_path):
+    agent = _agent_with_cca(monkeypatch, tmp_path)
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            return token_payload()
+        calls.append(req.full_url)
+        raise _http_error(req.full_url, 400)
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    assert agent._generate_markdown("sys", "prompt") == (None, "")
+    assert len(calls) == 1 and sleeps == []
