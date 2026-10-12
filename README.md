@@ -351,6 +351,31 @@ enabled it does not. In the European Economic Area, Switzerland and the United K
 free tier too. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms). If your sessions hold code you
 cannot share, use a paid key.
 
+### OAuth with your Google account (no API key)
+
+If you prefer not to mint an API key, the server can use your Google account
+through Application Default Credentials (OAuth), behind the same redaction
+barrier before anything leaves the machine:
+
+1. Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) and log in
+   with the account to bill (for example a Gemini Pro account or any account with billing):
+   ```bash
+   gcloud auth application-default-login
+   ```
+   This writes `~/.config/gcloud/application_default_credentials.json` (it holds a refresh
+   token — treat it like a secret; the server warns if it is readable by other users).
+2. Optionally pin the Cloud project that pays quota (paid-tier terms, so Google does not
+   train on your data):
+   ```bash
+   export CROSS_SESSION_GOOGLE_PROJECT=your-project-id
+   ```
+3. Confirm with `cross-session-mcp doctor`, which reports the OAuth status without
+   showing secrets.
+
+Precedence: an explicit API key (`GEMINI_API_KEY` / `GOOGLE_API_KEY` / file) still wins
+when set; OAuth is the fallback. On a 401 the server refreshes the token once and retries.
+Path override: `CROSS_SESSION_ADC_FILE`.
+
 ### Built-in protections
 
 - Before leaving for Gemini, the transcript goes through a secret filter: Google, Anthropic, OpenAI, OpenRouter,
@@ -369,6 +394,8 @@ cannot share, use a paid key.
 | `CROSS_SESSION_LANGUAGE` | `en` | Language of handoffs, the resume wrapper and MEMORY.md (`en` or `es`) |
 | `CROSS_SESSION_DB` | `~/.ai/cross_sessions.db` | Index and memory bank |
 | `CROSS_SESSION_KEY_FILE` | `~/.ai/.gemini_env` | File with `GEMINI_API_KEY=` |
+| `CROSS_SESSION_ADC_FILE` | `~/.config/gcloud/application_default_credentials.json` | OAuth credential file (no API key needed) |
+| `CROSS_SESSION_GOOGLE_PROJECT` | — | Cloud project billed for quota (paid-tier terms) |
 | `CROSS_SESSION_MODELS` | `gemini-flash-lite-latest,gemini-3.8-flash,gemini-flash-latest` | Models, in order of preference |
 | `CROSS_SESSION_TRANSCRIPT_BUDGET` | `160000` | Transcript characters sent to the model |
 | `CROSS_SESSION_MAX_OUTPUT_TOKENS` | `8192` | Maximum handoff length |

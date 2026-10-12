@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from cross_session_mcp import __version__
-from cross_session_mcp.agent import HAS_ANTIGRAVITY_SDK, configured_models, get_gemini_api_key
+from cross_session_mcp.agent import HAS_ANTIGRAVITY_SDK, configured_models, get_gemini_api_key, load_adc
 from cross_session_mcp.models import HARNESSES
 from cross_session_mcp.readers import get_all_readers
 from cross_session_mcp.service import MAX_BACK, CrossSessionService, SessionError, select_turns
@@ -134,9 +134,12 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     key = get_gemini_api_key()
     if key:
         print("  ✅ Key configured (value not shown)")
+    elif load_adc() is not None:
+        print("  ✅ OAuth (ADC) configured, no API key needed (secrets not shown)")
     else:
         print("  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
-              "      Set GEMINI_API_KEY or ~/.ai/.gemini_env.")
+              "      Set GEMINI_API_KEY or ~/.ai/.gemini_env, or log in with "
+              "`gcloud auth application-default-login` (OAuth, no key).")
     print(f"  Models: {', '.join(configured_models())}")
     print(f"  Antigravity SDK: {'available' if HAS_ANTIGRAVITY_SDK else 'not installed (REST is used)'}")
 

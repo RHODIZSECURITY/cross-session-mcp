@@ -111,7 +111,7 @@ def test_no_key_leaves_memory_untouched(svc):
     before = svc.db.get_memory(WORKSPACE)
     bump(svc, "codex-sess-1")
     svc.agent.available = False
-    with pytest.raises(SessionError, match="key"):
+    with pytest.raises(SessionError, match="credential"):
         svc.update_project_memory(WORKSPACE)
     assert svc.db.get_memory(WORKSPACE)["version"] == before["version"]
     assert svc.db.get_memory(WORKSPACE)["rendered_md"] == before["rendered_md"]

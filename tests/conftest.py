@@ -223,6 +223,8 @@ def stores(tmp_path, monkeypatch):
     monkeypatch.setenv("CROSS_SESSION_VSCODE_DIRS", str(copilot))
     monkeypatch.setenv("CROSS_SESSION_DB", str(tmp_path / "index.db"))
     monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "missing"))
+    monkeypatch.delenv("CROSS_SESSION_GOOGLE_PROJECT", raising=False)
     monkeypatch.setenv("CROSS_SESSION_DISABLE_SDK", "1")
     monkeypatch.delenv("CROSS_SESSION_LANGUAGE", raising=False)
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):

@@ -14,7 +14,9 @@ import os
 import re
 import stat
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -40,6 +42,109 @@ except Exception:
 DEFAULT_MODELS = ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-flash-latest"]
 GEMINI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 HANDOFF_SECTION_COUNT = 8
+
+
+# -----------------------------------------------------------------------------
+# OAuth via Application Default Credentials (no API key)
+# -----------------------------------------------------------------------------
+OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+ADC_ENV_VAR = "CROSS_SESSION_ADC_FILE"
+GOOGLE_PROJECT_ENV_VAR = "CROSS_SESSION_GOOGLE_PROJECT"
+_TOKEN_REFRESH_MARGIN = 60  # seconds: refresh before the token actually expires
+
+
+def default_adc_path() -> Path:
+    """Location of the authorized_user ADC file (overridable with CROSS_SESSION_ADC_FILE)."""
+    return Path(
+        os.environ.get(ADC_ENV_VAR, Path.home() / ".config" / "gcloud" / "application_default_credentials.json")
+    ).expanduser()
+
+
+def load_adc(path: Path | None = None) -> dict[str, str] | None:
+    """Reads an authorized_user ADC file (client_id/client_secret/refresh_token).
+
+    Returns the credentials or None when absent or invalid. Never raises and never logs secrets.
+    Mint the file with `gcloud auth application-default-login` using the Google account to bill.
+    """
+    adc = path or default_adc_path()
+    try:
+        if not adc.is_file():
+            return None
+        mode = adc.stat().st_mode
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            logger.warning("%s is readable by other users; run: chmod 600 %s", adc, adc)
+        data = json.loads(adc.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read ADC file %s (%s)", adc, type(exc).__name__)
+        return None
+    if not isinstance(data, dict) or data.get("type") != "authorized_user":
+        return None
+    creds = {key: data.get(key) for key in ("client_id", "client_secret", "refresh_token")}
+    if not all(isinstance(value, str) and value for value in creds.values()):
+        logger.warning("ADC file %s is not a complete authorized_user credential", adc)
+        return None
+    return creds
+
+
+class OAuthTokenCache:
+    """Caches a Google OAuth access token, refreshing it from the ADC refresh_token (stdlib only)."""
+
+    def __init__(self, creds: dict[str, str] | None = None):
+        self._creds = creds
+        self._token = ""
+        self._expires_at = 0.0
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._creds)
+
+    def invalidate(self) -> None:
+        self._token = ""
+        self._expires_at = 0.0
+
+    def token(self, timeout: int) -> str:
+        """A valid access token, refreshing it when missing or expiring. Empty string on failure."""
+        if self._token and time.time() < self._expires_at - _TOKEN_REFRESH_MARGIN:
+            return self._token
+        self.invalidate()
+        if self.refresh(timeout):
+            return self._token
+        return ""
+
+    def refresh(self, timeout: int) -> bool:
+        """Exchanges the ADC refresh_token for an access_token. False on failure; secrets stay out of logs."""
+        if not self._creds:
+            return False
+        req = urllib.request.Request(
+            OAUTH_TOKEN_URL,
+            data=urllib.parse.urlencode(
+                {
+                    "grant_type": "refresh_token",
+                    "client_id": self._creds["client_id"],
+                    "client_secret": self._creds["client_secret"],
+                    "refresh_token": self._creds["refresh_token"],
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            logger.warning("OAuth token refresh failed (%s)", type(exc).__name__)
+            return False
+        token = data.get("access_token")
+        if not isinstance(token, str) or not token:
+            logger.warning("OAuth token refresh returned no access token")
+            return False
+        try:
+            lifetime = int(data.get("expires_in", 3600))
+        except (TypeError, ValueError):
+            lifetime = 3600
+        self._token = token
+        self._expires_at = time.time() + max(lifetime, _TOKEN_REFRESH_MARGIN + 1)
+        return True
 
 
 def _env_int(name: str, default: int) -> int:
@@ -509,6 +614,8 @@ class GeminiHandoffAgent:
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or get_gemini_api_key()
+        self.oauth = OAuthTokenCache(load_adc())
+        self.google_project = os.environ.get(GOOGLE_PROJECT_ENV_VAR, "").strip()
         self.models = configured_models()
         self.timeout = _env_int("CROSS_SESSION_HTTP_TIMEOUT", 90)
         self.use_sdk = HAS_ANTIGRAVITY_SDK and os.environ.get("CROSS_SESSION_DISABLE_SDK") != "1"
@@ -530,18 +637,60 @@ class GeminiHandoffAgent:
             logger.warning("Antigravity SDK failed (%s): %s", type(exc).__name__, redact(str(exc)))
             return None
 
-    def _call_model(self, model: str, payload: dict) -> tuple[str, str] | None:
-        """One REST request to `model`. Returns (text, finishReason) or None on failure."""
+    def _auth_headers(self) -> dict[str, str] | None:
+        """Auth headers for the REST call: API key when set, otherwise a fresh OAuth token.
+
+        Returns None when no credential is available. Secrets are never logged."""
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            # The key goes in a header, never in the URL (keeps it out of logs and traces)
+            headers["x-goog-api-key"] = self.api_key
+            return headers
+        token = self.oauth.token(self.timeout)
+        if not token:
+            return None
+        headers["Authorization"] = f"Bearer {token}"
+        if self.google_project:
+            # Bills quota to this Cloud project (paid-tier terms) instead of the token's default project.
+            headers["x-goog-user-project"] = self.google_project
+        return headers
+
+    def _post_model(
+        self, model: str, data_bytes: bytes, headers: dict[str, str], refresh_on_401: bool
+    ) -> dict[str, Any]:
+        """POSTs to `model` and returns the decoded JSON. On 401 with OAuth, refreshes once and retries."""
         req = urllib.request.Request(
             GEMINI_ENDPOINT_URL.format(model=model),
-            data=json.dumps(payload).encode("utf-8"),
-            # The key goes in a header, never in the URL (keeps it out of logs and traces)
-            headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+            data=data_bytes,
+            headers=headers,
             method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if refresh_on_401 and exc.code == 401:
+                self.oauth.invalidate()
+                retry_headers = self._auth_headers()
+                if retry_headers is not None:
+                    retry = urllib.request.Request(
+                        GEMINI_ENDPOINT_URL.format(model=model),
+                        data=data_bytes,
+                        headers=retry_headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(retry, timeout=self.timeout) as response:
+                        return json.loads(response.read().decode("utf-8"))
+            raise
+
+    def _call_model(self, model: str, payload: dict) -> tuple[str, str] | None:
+        """One REST request to `model`. Returns (text, finishReason) or None on failure."""
+        headers = self._auth_headers()
+        if headers is None:
+            return None
+        data_bytes = json.dumps(payload).encode("utf-8")
+        try:
+            data = self._post_model(model, data_bytes, headers, refresh_on_401=not self.api_key)
         except urllib.error.HTTPError as exc:
             body = ""
             try:
@@ -627,7 +776,7 @@ class GeminiHandoffAgent:
     # ------------------------------------------------------------------ project memory
     @property
     def available(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.api_key or self.oauth.configured)
 
     @staticmethod
     def _transcript_fields(detail: SessionDetail) -> dict[str, Any]:
@@ -650,7 +799,7 @@ class GeminiHandoffAgent:
         """Digest (Extended Handoff + memory data) with ONE LLM call. None without a key or when no model
         answers well. Writes no files; the transcript leaves without secrets or PII and the output is
         filtered again."""
-        if not self.api_key:
+        if not self.available:
             return None
         prompt = MASTER_DIGEST_TEMPLATE.format(**self._transcript_fields(detail))
         digest, model = self._generate_json(
@@ -666,7 +815,7 @@ class GeminiHandoffAgent:
     def generate_focused_handoff(self, detail: SessionDetail, focus: str) -> tuple[str, str] | None:
         """Extended Handoff oriented to `focus`, in a separate call. Ephemeral: the caller never saves it.
         Returns (markdown, model) or None without a key or when every model fails."""
-        if not self.api_key:
+        if not self.available:
             return None
         prompt = FOCUSED_HANDOFF_TEMPLATE.format(focus=clean_text(focus), **self._transcript_fields(detail))
         text, model = self._generate_markdown(_system(FOCUSED_HANDOFF_SYSTEM_PROMPT), prompt)
@@ -674,7 +823,7 @@ class GeminiHandoffAgent:
 
     def synthesize_topic(self, topic: str, results_text: str) -> tuple[str, str] | None:
         """Patterns, contradictions and evolution of a topic, built ONLY from the search results."""
-        if not self.api_key:
+        if not self.available:
             return None
         prompt = TOPIC_SYNTHESIS_TEMPLATE.format(topic=clean_text(topic), results_text=clean_text(results_text))
         text, model = self._generate_markdown(_system(TOPIC_SYNTHESIS_SYSTEM_PROMPT), prompt)
@@ -689,7 +838,7 @@ class GeminiHandoffAgent:
         window_size: int,
     ) -> dict[str, Any] | None:
         """Consolidation with ONE LLM call. None without a key or when every model fails."""
-        if not self.api_key:
+        if not self.available:
             return None
         prompt = build_consolidation_prompt(
             entries, digests, ref_by_key, workspace, window_size, now_utc_iso()[:10]

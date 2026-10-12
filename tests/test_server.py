@@ -186,7 +186,7 @@ def test_project_memory_tools(stores):
         call(7, "update_project_memory", {"workspace_path": ws, "sessions": "x"}),
     ])
     assert by_id[1]["result"]["isError"] is False and "No memory saved" in text_of(by_id[1])
-    assert by_id[2]["result"]["isError"] is True and "key" in text_of(by_id[2])
+    assert by_id[2]["result"]["isError"] is True and "credential" in text_of(by_id[2])
     assert by_id[3]["result"]["isError"] is False and "update_project_memory" in text_of(by_id[3])
     assert by_id[4]["error"]["code"] == -32602 and by_id[5]["error"]["code"] == -32602
     assert by_id[6]["result"]["isError"] is True

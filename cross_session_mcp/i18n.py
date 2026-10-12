@@ -25,8 +25,9 @@ _TEXT = {
         "open_question": "Question left open when the session ended, unanswered: “{question}”",
         "offline_notice": ("> Generated without a language model (the Gemini API failed); not saved. "
                            "For more detail use `get_session_turns` with `query`."),
-        "offline_notice_no_key": ("> Generated without a language model because there is no Gemini key; not saved. "
-                                  "Set `GEMINI_API_KEY` or `~/.ai/.gemini_env` so a model summarizes the session "
+        "offline_notice_no_key": ("> Generated without a language model because there is no Gemini credential; not saved. "
+                                  "Set `GEMINI_API_KEY`, `~/.ai/.gemini_env`, or OAuth via "
+                                  "`gcloud auth application-default-login` so a model summarizes the session "
                                   "and the agent does not have to read the transcript. "
                                   "For more detail use `get_session_turns` with `query`."),
         "offline_title": "Recorded title",
@@ -77,8 +78,9 @@ _TEXT = {
         "open_question": "Pregunta abierta al cierre de la sesión, sin respuesta: «{question}»",
         "offline_notice": ("> Generado sin modelo de lenguaje (la API de Gemini falló); no se guarda. "
                            "Para más detalle use `get_session_turns` con `query`."),
-        "offline_notice_no_key": ("> Generado sin modelo de lenguaje porque no hay clave de Gemini; no se guarda. "
-                                  "Configure `GEMINI_API_KEY` o `~/.ai/.gemini_env` para que un modelo resuma la "
+        "offline_notice_no_key": ("> Generado sin modelo de lenguaje porque no hay credencial de Gemini; no se guarda. "
+                                  "Configure `GEMINI_API_KEY`, `~/.ai/.gemini_env` u OAuth con "
+                                  "`gcloud auth application-default-login` para que un modelo resuma la "
                                   "sesión y el agente no tenga que leer la transcripción. "
                                   "Para más detalle use `get_session_turns` con `query`."),
         "offline_title": "Título registrado",

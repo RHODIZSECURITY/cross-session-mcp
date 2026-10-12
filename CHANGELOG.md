@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- OAuth authentication with a Google account (no API key): Application Default
+  Credentials from `gcloud auth application-default-login`, with automatic token
+  refresh, `Authorization: Bearer` transport, optional `CROSS_SESSION_GOOGLE_PROJECT`
+  billing, one 401-triggered refresh-and-retry, and `doctor` reporting. An explicit
+  API key still takes precedence. Standard library only, no new dependency.
+
 ## [1.4.0] - 2026-10-12
 
 ### Added

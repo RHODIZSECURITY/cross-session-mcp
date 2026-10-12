@@ -57,6 +57,8 @@ def detail():
 @pytest.fixture(autouse=True)
 def env(monkeypatch, tmp_path):
     monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "none"))
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "none"))
+    monkeypatch.delenv("CROSS_SESSION_GOOGLE_PROJECT", raising=False)
     monkeypatch.setenv("CROSS_SESSION_DISABLE_SDK", "1")
     monkeypatch.setenv("CROSS_SESSION_MODELS", "model-a,model-b")
     monkeypatch.delenv("CROSS_SESSION_LANGUAGE", raising=False)
