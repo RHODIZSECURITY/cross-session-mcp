@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Antigravity login (fork only): `cross-session-mcp antigravity-login` performs Google
+  OAuth (PKCE) with the Antigravity desktop client identifiers and discovers the Cloud
+  Code Assist project; synthesis then uses that transport with automatic refresh and one
+  401-triggered retry. Precedence: API key, ADC file, Antigravity. Standard library only.
+
+### Added
 - OAuth authentication with a Google account (no API key): Application Default
   Credentials from `gcloud auth application-default-login`, with automatic token
   refresh, `Authorization: Bearer` transport, optional `CROSS_SESSION_GOOGLE_PROJECT`
