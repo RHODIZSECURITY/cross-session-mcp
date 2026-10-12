@@ -122,6 +122,29 @@ def test_oauth_bearer_and_user_project_headers(monkeypatch, tmp_path):
     assert "x-goog-api-key" not in headers
 
 
+def test_non_object_refresh_payload_fails_closed(monkeypatch, tmp_path):
+    isolated_env(monkeypatch, tmp_path)
+    adc = write_adc(tmp_path / "adc.json")
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(adc))
+
+    def fake_urlopen(req, timeout):
+        return FakeResponse(json.dumps(["not", "an", "object"]).encode("utf-8"))
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    agent = GeminiHandoffAgent()
+    assert agent._generate_markdown("sys", "prompt") == (None, "")
+
+
+def test_project_with_line_break_is_ignored(monkeypatch, tmp_path):
+    isolated_env(monkeypatch, tmp_path)
+    adc = write_adc(tmp_path / "adc.json")
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(adc))
+    monkeypatch.setenv("CROSS_SESSION_GOOGLE_PROJECT", "proj\ninjected: x")
+    agent = GeminiHandoffAgent()
+    assert agent.google_project == ""
+    assert "x-goog-user-project" not in (agent._auth_headers() or {})
+
+
 def test_cached_token_reused_without_refresh(monkeypatch, tmp_path):
     isolated_env(monkeypatch, tmp_path)
     cache = OAuthTokenCache({"client_id": "c", "client_secret": "s", "refresh_token": "r"})

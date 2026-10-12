@@ -134,6 +134,9 @@ class OAuthTokenCache:
         except Exception as exc:
             logger.warning("OAuth token refresh failed (%s)", type(exc).__name__)
             return False
+        if not isinstance(data, dict):
+            logger.warning("OAuth token refresh returned a non-JSON-object payload")
+            return False
         token = data.get("access_token")
         if not isinstance(token, str) or not token:
             logger.warning("OAuth token refresh returned no access token")
@@ -615,7 +618,11 @@ class GeminiHandoffAgent:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or get_gemini_api_key()
         self.oauth = OAuthTokenCache(load_adc())
-        self.google_project = os.environ.get(GOOGLE_PROJECT_ENV_VAR, "").strip()
+        project = os.environ.get(GOOGLE_PROJECT_ENV_VAR, "").strip()
+        if re.search(r"[\r\n]", project):
+            logger.warning("CROSS_SESSION_GOOGLE_PROJECT contains a line break; ignoring it")
+            project = ""
+        self.google_project = project
         self.models = configured_models()
         self.timeout = _env_int("CROSS_SESSION_HTTP_TIMEOUT", 90)
         self.use_sdk = HAS_ANTIGRAVITY_SDK and os.environ.get("CROSS_SESSION_DISABLE_SDK") != "1"
@@ -796,7 +803,7 @@ class GeminiHandoffAgent:
         )
 
     def generate_digest(self, detail: SessionDetail) -> dict[str, Any] | None:
-        """Digest (Extended Handoff + memory data) with ONE LLM call. None without a key or when no model
+        """Digest (Extended Handoff + memory data) with ONE LLM call. None without a credential or when no model
         answers well. Writes no files; the transcript leaves without secrets or PII and the output is
         filtered again."""
         if not self.available:
@@ -814,7 +821,7 @@ class GeminiHandoffAgent:
 
     def generate_focused_handoff(self, detail: SessionDetail, focus: str) -> tuple[str, str] | None:
         """Extended Handoff oriented to `focus`, in a separate call. Ephemeral: the caller never saves it.
-        Returns (markdown, model) or None without a key or when every model fails."""
+        Returns (markdown, model) or None without a credential or when every model fails."""
         if not self.available:
             return None
         prompt = FOCUSED_HANDOFF_TEMPLATE.format(focus=clean_text(focus), **self._transcript_fields(detail))
@@ -837,7 +844,7 @@ class GeminiHandoffAgent:
         workspace: str,
         window_size: int,
     ) -> dict[str, Any] | None:
-        """Consolidation with ONE LLM call. None without a key or when every model fails."""
+        """Consolidation with ONE LLM call. None without a credential or when every model fails."""
         if not self.available:
             return None
         prompt = build_consolidation_prompt(
