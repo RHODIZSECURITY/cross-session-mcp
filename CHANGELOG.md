@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-10-12
+
+### Added
+- macOS support: the Cursor and VS Code / Copilot readers look under
+  `~/Library/Application Support`. Tested with synthetic stores only;
+  please report any macOS store that is not found.
+- README: context savings measured on real sessions, a quick start and
+  an example Extended Handoff.
+
+### Changed
+- A handoff built without a model now says why. With no key it explains
+  how to set one; when Gemini failed it does not ask for a key.
+- `doctor` warns that the project memory needs the Gemini key.
+- CI uses `actions/checkout` v7 and `astral-sh/setup-uv` v10.
+
+### Fixed
+- Focused handoffs built after a Gemini failure were labelled
+  `offline-extractor`; they are now `offline-fallback`.
+- The source distribution no longer ships an incomplete test suite.
+
+### Security
+- Hugging Face, npm, PyPI, DigitalOcean, Sentry, Groq, xAI, Replicate,
+  Linear, Shopify and SendGrid tokens are now redacted.
+
 ## [1.3.0] - 2026-10-09
 
 ### Added
