@@ -271,8 +271,9 @@ class CrossSessionService:
     def _require_llm(self) -> None:
         if not getattr(self.agent, "available", True):
             raise SessionError(
-                "The project memory needs the LLM and there is no Gemini key: set GEMINI_API_KEY "
-                "or ~/.ai/.gemini_env. The existing memory was not modified."
+                "The project memory needs the LLM and there is no Gemini credential: set GEMINI_API_KEY, "
+                "~/.ai/.gemini_env, or OAuth via `gcloud auth application-default-login`. "
+                "The existing memory was not modified."
             )
 
     def _generate_missing_digests(self, pending: list[SessionSummary]) -> tuple[int, list[str], list[SessionSummary]]:
@@ -460,8 +461,9 @@ class CrossSessionService:
                 return (f"No memory for `{ws}` yet: it is being generated in the background. "
                         "Check again in a few minutes.")
             if not getattr(self.agent, "available", True):
-                return (f"No memory saved for `{ws}` and no Gemini key to generate it: set "
-                        "GEMINI_API_KEY or ~/.ai/.gemini_env.")
+                return (f"No memory saved for `{ws}` and no Gemini credential to generate it: set "
+                        "GEMINI_API_KEY, ~/.ai/.gemini_env, or OAuth via "
+                        "`gcloud auth application-default-login`.")
             return self._no_memory_text(ws)
         saved = {(w["key"], w.get("updated_at") or "") for w in mem["window"]}
         current = self.recent_sessions(ws, max(len(mem["window"]), 1))
@@ -655,5 +657,5 @@ class CrossSessionService:
             if out:
                 text += f"\n\n## Pattern synthesis ({out[1]}, not saved)\n{out[0]}"
             else:
-                text += "\n\n> ⚠️ No synthesis: there is no Gemini key or the API failed. Only the matches are shown."
+                text += "\n\n> ⚠️ No synthesis: there is no Gemini credential or the API failed. Only the matches are shown."
         return text

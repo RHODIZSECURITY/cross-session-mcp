@@ -58,7 +58,7 @@ def test_memory_errors_exit_nonzero(patched, capsys):
     patched.agent.available = False
     with pytest.raises(SystemExit) as exc:
         run_cli("memory", "update", WORKSPACE)
-    assert exc.value.code == 1 and "key" in capsys.readouterr().err
+    assert exc.value.code == 1 and "credential" in capsys.readouterr().err
     with pytest.raises(SystemExit) as exc:
         run_cli("memory", "pin", "D1", WORKSPACE)
     assert exc.value.code == 1
@@ -107,6 +107,8 @@ def test_doctor_with_empty_home_and_no_key(tmp_path, monkeypatch, capsys):
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "missing"))
+    monkeypatch.delenv("CROSS_SESSION_GOOGLE_PROJECT", raising=False)
     svc = CrossSessionService(db=CrossSessionDB(tmp_path / "doctor.db"), agent=FakeAgent())
     with pytest.raises(SystemExit) as exc:
         cli.cmd_doctor(svc, None)

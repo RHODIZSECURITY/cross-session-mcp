@@ -42,6 +42,8 @@ class FakeResponse(io.BytesIO):
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "none"))
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "none"))
+    monkeypatch.delenv("CROSS_SESSION_GOOGLE_PROJECT", raising=False)
     monkeypatch.setenv("CROSS_SESSION_DISABLE_SDK", "1")
     monkeypatch.setenv("CROSS_SESSION_MODELS", "model-a,model-b")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
@@ -91,7 +93,7 @@ def test_offline_handoff_in_spanish(monkeypatch):
     md = build_offline_handoff(make_detail(), focus_area="tests")
     assert "### 7. Plan inmediato" in md and "Foco solicitado: tests" in md
     assert has_handoff_sections(md)
-    assert "no hay clave de Gemini" in md and "GEMINI_API_KEY" in md
+    assert "no hay credencial de Gemini" in md and "GEMINI_API_KEY" in md
     failed = build_offline_handoff(make_detail(), reason="llm_failed")
     assert "la API de Gemini falló" in failed and "GEMINI_API_KEY" not in failed
 
