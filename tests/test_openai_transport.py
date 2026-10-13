@@ -30,9 +30,11 @@ def isolated_env(monkeypatch, tmp_path):
 
 
 def chat_ok(text="hello-oai", finish="stop"):
-    return FakeResponse(json.dumps(
-        {"choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": finish}]}
-    ).encode("utf-8"))
+    return FakeResponse(
+        json.dumps({"choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": finish}]}).encode(
+            "utf-8"
+        )
+    )
 
 
 def payload():

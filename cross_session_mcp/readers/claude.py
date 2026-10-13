@@ -53,9 +53,7 @@ class ClaudeSessionReader(BaseSessionReader):
     name = "claude"
 
     def __init__(self, projects_dir: Path | None = None):
-        self.projects_dir = projects_dir or env_path(
-            "CROSS_SESSION_CLAUDE_DIR", Path.home() / ".claude" / "projects"
-        )
+        self.projects_dir = projects_dir or env_path("CROSS_SESSION_CLAUDE_DIR", Path.home() / ".claude" / "projects")
 
     def can_read(self) -> bool:
         return self.projects_dir.is_dir()
@@ -77,9 +75,7 @@ class ClaudeSessionReader(BaseSessionReader):
     def _tool_result_text(item: dict[str, Any]) -> str:
         content = item.get("content")
         if isinstance(content, list):
-            content = "\n".join(
-                c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"
-            )
+            content = "\n".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
         return str(content or "")
 
     def _record_to_turns(self, rec: dict[str, Any]) -> list[SessionTurn]:
@@ -99,24 +95,35 @@ class ClaudeSessionReader(BaseSessionReader):
             if itype == "text" and item.get("text", "").strip():
                 texts.append(item["text"])
             elif itype == "tool_use":
-                turns.append(SessionTurn(
-                    role="tool",
-                    content=self._tool_call_text(item.get("name", "tool"), item.get("input")),
-                    timestamp=ts,
-                ))
+                turns.append(
+                    SessionTurn(
+                        role="tool",
+                        content=self._tool_call_text(item.get("name", "tool"), item.get("input")),
+                        timestamp=ts,
+                    )
+                )
             elif itype == "tool_result":
-                turns.append(SessionTurn(
-                    role="tool",
-                    content=truncate(self._tool_result_text(item), TOOL_TURN_LIMIT),
-                    timestamp=ts,
-                ))
+                turns.append(
+                    SessionTurn(
+                        role="tool",
+                        content=truncate(self._tool_result_text(item), TOOL_TURN_LIMIT),
+                        timestamp=ts,
+                    )
+                )
             # 'thinking' and 'image' are skipped on purpose
         if texts:
             turns.insert(0, SessionTurn(role=rtype, content=truncate("\n".join(texts), TEXT_TURN_LIMIT), timestamp=ts))
         return turns
 
     def _scan(self, path: Path, collect_turns: bool) -> tuple[dict[str, Any], list[SessionTurn]]:
-        meta: dict[str, Any] = {"title": "", "ai_title": "", "cwd": "", "created_at": None, "last_prompt": "", "turn_count": 0}
+        meta: dict[str, Any] = {
+            "title": "",
+            "ai_title": "",
+            "cwd": "",
+            "created_at": None,
+            "last_prompt": "",
+            "turn_count": 0,
+        }
         turns: list[SessionTurn] = []
         for rec in self._iter_jsonl(path):
             if not isinstance(rec, dict):
@@ -195,7 +202,9 @@ class ClaudeSessionReader(BaseSessionReader):
             if meta["turn_count"] == 0:
                 continue  # empty or metadata-only sessions
             summary = self._build_summary(sfile, meta)
-            if is_excluded_workspace(summary.workspace_path) or not workspace_matches(workspace_filter, summary.workspace_path):
+            if is_excluded_workspace(summary.workspace_path) or not workspace_matches(
+                workspace_filter, summary.workspace_path
+            ):
                 continue
             sessions.append(summary)
             if len(sessions) >= limit:

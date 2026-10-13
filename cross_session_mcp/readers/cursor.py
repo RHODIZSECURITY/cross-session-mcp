@@ -86,7 +86,9 @@ class CursorSessionReader(BaseSessionReader):
     # ------------------------------------------------------------------ datos
     def _composers(self, conn: sqlite3.Connection, composer_id: str | None = None) -> list[dict[str, Any]]:
         if composer_id:
-            rows = conn.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (f"composerData:{composer_id}",)).fetchall()
+            rows = conn.execute(
+                "SELECT value FROM cursorDiskKV WHERE key = ?", (f"composerData:{composer_id}",)
+            ).fetchall()
         else:
             rows = conn.execute("SELECT value FROM cursorDiskKV WHERE key LIKE 'composerData:%'").fetchall()
         return [d for d in (_loads(r[0]) for r in rows) if isinstance(d, dict) and d.get("composerId")]
@@ -106,7 +108,9 @@ class CursorSessionReader(BaseSessionReader):
             bid = header.get("bubbleId")
             bubble = inline.get(bid)
             if bubble is None and bid:
-                row = conn.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (f"bubbleId:{cid}:{bid}",)).fetchone()
+                row = conn.execute(
+                    "SELECT value FROM cursorDiskKV WHERE key = ?", (f"bubbleId:{cid}:{bid}",)
+                ).fetchone()
                 bubble = _loads(row[0]) if row else None
             if isinstance(bubble, dict):
                 bubble.setdefault("type", header.get("type"))
@@ -125,14 +129,20 @@ class CursorSessionReader(BaseSessionReader):
             turns.append(SessionTurn(role="assistant", content=truncate(text, TEXT_TURN_LIMIT), timestamp=ts))
         tool = bubble.get("toolFormerData")
         if isinstance(tool, dict) and (tool.get("name") or tool.get("tool")):
-            content = self._tool_call_text(str(tool.get("name") or tool.get("tool")), tool.get("rawArgs") or tool.get("params") or "")
+            content = self._tool_call_text(
+                str(tool.get("name") or tool.get("tool")), tool.get("rawArgs") or tool.get("params") or ""
+            )
             result = tool.get("result")
             if result:
-                content += "\n" + truncate(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False), TOOL_TURN_LIMIT)
+                content += "\n" + truncate(
+                    result if isinstance(result, str) else json.dumps(result, ensure_ascii=False), TOOL_TURN_LIMIT
+                )
             turns.append(SessionTurn(role="tool", content=content, timestamp=ts))
         return turns
 
-    def _summary(self, composer: dict[str, Any], workspace: str, turns: list[SessionTurn] | None = None) -> SessionSummary:
+    def _summary(
+        self, composer: dict[str, Any], workspace: str, turns: list[SessionTurn] | None = None
+    ) -> SessionSummary:
         cid = composer["composerId"]
         headers = self._headers(composer)
         user_turns = [t for t in turns or [] if t.role == "user"]
@@ -140,7 +150,8 @@ class CursorSessionReader(BaseSessionReader):
             session_id=cid,
             harness=self.name,
             workspace_path=workspace,
-            title=composer.get("name") or (truncate(user_turns[0].content.splitlines()[0], 80) if user_turns else "")
+            title=composer.get("name")
+            or (truncate(user_turns[0].content.splitlines()[0], 80) if user_turns else "")
             or f"Cursor session ({cid[:8]})",
             created_at=to_utc_iso(composer.get("createdAt")),
             updated_at=to_utc_iso(composer.get("lastUpdatedAt") or composer.get("createdAt")),

@@ -1,5 +1,6 @@
 """Tests for the persistent digest and memory tables (migration, CRUD and optimistic concurrency)."""
 
+import os
 import sqlite3
 import stat
 
@@ -10,16 +11,34 @@ from cross_session_mcp.models import SessionSummary
 
 
 def entry(eid="D1", **kw):
-    base = dict(id=eid, kind=eid[0], text="text " + eid, why="", scope=None, evidence=["claude:s1"],
-                status="active", pinned=False, text_hash="h", first_seen="2026-09-01", last_seen="2026-09-01",
-                updated_at="2026-09-01")
+    base = dict(
+        id=eid,
+        kind=eid[0],
+        text="text " + eid,
+        why="",
+        scope=None,
+        evidence=["claude:s1"],
+        status="active",
+        pinned=False,
+        text_hash="h",
+        first_seen="2026-09-01",
+        last_seen="2026-09-01",
+        updated_at="2026-09-01",
+    )
     base.update(kw)
     return base
 
 
 def save(db, base, ws="/p/app", entries=None, md="# M"):
-    return db.save_memory_version(ws, base, md, [{"key": "claude:s1", "harness": "claude", "session_id": "s1"}],
-                                  ["state"], "gemini", entries if entries is not None else [entry()])
+    return db.save_memory_version(
+        ws,
+        base,
+        md,
+        [{"key": "claude:s1", "harness": "claude", "session_id": "s1"}],
+        ["state"],
+        "gemini",
+        entries if entries is not None else [entry()],
+    )
 
 
 def make_v3_db(path):
@@ -68,9 +87,11 @@ def test_migration_v3_to_v4_invalidates_old_digests_and_keeps_memory(tmp_path):
 def test_old_format_digest_is_ignored_and_new_one_is_saved_as_current(tmp_path):
     db = CrossSessionDB(tmp_path / "t.db")
     conn = sqlite3.connect(db.db_path)
-    conn.execute("INSERT INTO session_digests (session_id, harness, workspace_path, source_updated_at, relevant, "
-                 "digest_json, handoff_md, model_used, generated_at, format_version) "
-                 "VALUES ('s1','claude','/p','2026',1,'{}','old','m','2026',1)")
+    conn.execute(
+        "INSERT INTO session_digests (session_id, harness, workspace_path, source_updated_at, relevant, "
+        "digest_json, handoff_md, model_used, generated_at, format_version) "
+        "VALUES ('s1','claude','/p','2026',1,'{}','old','m','2026',1)"
+    )
     conn.commit()
     conn.close()
     assert db.get_digest("s1", "claude") is None
@@ -97,19 +118,22 @@ def test_tables_exist_and_file_is_private(tmp_path):
     db = CrossSessionDB(tmp_path / "t.db")
     names = {r[0] for r in sqlite3.connect(db.db_path).execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"session_digests", "project_memory", "memory_entries", "memory_versions", "maintenance_locks"} <= names
-    assert stat.S_IMODE(db.db_path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(db.db_path.stat().st_mode) == 0o600
 
 
 def test_digest_cache_valid_and_stale(tmp_path):
     db = CrossSessionDB(tmp_path / "t.db")
-    db.save_digest("s1", "claude", "/p", "2026-09-01T10:00:00+00:00", {"relevant": False, "summary_line": "a"},
-                   "# H", "m")
+    db.save_digest(
+        "s1", "claude", "/p", "2026-09-01T10:00:00+00:00", {"relevant": False, "summary_line": "a"}, "# H", "m"
+    )
     assert db.get_digest("s1", "claude", "2026-09-01T10:00:00+00:00")["handoff_md"] == "# H"  # current
     assert db.get_digest("s1", "claude", "2026-09-01T09:00:00+00:00") is not None  # session not newer
     assert db.get_digest("s1", "claude", "2026-09-02T00:00:00+00:00") is None  # stale
     assert db.get_digest("s1", "codex") is None
-    db.save_digest("s1", "claude", "/p", "2026-09-02T00:00:00+00:00", {"relevant": True, "summary_line": "b"},
-                   "# H2", "m")  # replaces
+    db.save_digest(
+        "s1", "claude", "/p", "2026-09-02T00:00:00+00:00", {"relevant": True, "summary_line": "b"}, "# H2", "m"
+    )  # replaces
     assert db.get_digest("s1", "claude", "2026-09-02T00:00:00+00:00")["digest"]["summary_line"] == "b"
 
 
@@ -118,10 +142,16 @@ def test_window_sessions_exact_workspace(tmp_path):
 
     class R:
         name = "claude"
-        def can_read(self): return True
+
+        def can_read(self):
+            return True
+
         def list_sessions(self, limit=50, workspace_filter=None):
-            return [SessionSummary("a", "claude", "/p/app", "t", updated_at="2026-09-01T10:00:00+00:00"),
-                    SessionSummary("b", "claude", "/p/app/sub", "t", updated_at="2026-09-02T10:00:00+00:00")]
+            return [
+                SessionSummary("a", "claude", "/p/app", "t", updated_at="2026-09-01T10:00:00+00:00"),
+                SessionSummary("b", "claude", "/p/app/sub", "t", updated_at="2026-09-02T10:00:00+00:00"),
+            ]
+
     db.sync_from_readers(readers=[R()])
     assert [s.session_id for s in db.window_sessions("/p/app", 8)] == ["a"]
 

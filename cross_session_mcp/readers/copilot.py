@@ -60,14 +60,17 @@ def replay_operations(lines: list[dict[str, Any]]) -> dict[str, Any]:
             if kind == 1:
                 parent[last] = op.get("v")
             elif kind == 2:
-                target = parent[last] if (isinstance(parent, dict) and last in parent) or (
-                    isinstance(parent, list) and isinstance(last, int) and last < len(parent)
-                ) else None
+                target = (
+                    parent[last]
+                    if (isinstance(parent, dict) and last in parent)
+                    or (isinstance(parent, list) and isinstance(last, int) and last < len(parent))
+                    else None
+                )
                 if not isinstance(target, list):
                     target = []
                     parent[last] = target
                 if op.get("i") is not None:
-                    del target[int(op["i"]):]
+                    del target[int(op["i"]) :]
                 target.extend(op.get("v") or [])
             elif kind == 3:
                 if isinstance(parent, dict):
@@ -86,8 +89,10 @@ class CopilotSessionReader(BaseSessionReader):
         self.user_dirs = user_dirs or default_vscode_user_dirs()
 
     def can_read(self) -> bool:
-        return any((d / "workspaceStorage").is_dir() or (d / "globalStorage" / "emptyWindowChatSessions").is_dir()
-                   for d in self.user_dirs)
+        return any(
+            (d / "workspaceStorage").is_dir() or (d / "globalStorage" / "emptyWindowChatSessions").is_dir()
+            for d in self.user_dirs
+        )
 
     # ------------------------------------------------------------------ files
     @staticmethod
@@ -170,7 +175,11 @@ class CopilotSessionReader(BaseSessionReader):
             elif kind == "toolInvocationSerialized":
                 flush()
                 message = self._value_text(part.get("pastTenseMessage") or part.get("invocationMessage"))
-                turns.append(SessionTurn(role="tool", content=self._tool_call_text(part.get("toolId", "tool"), message), timestamp=ts))
+                turns.append(
+                    SessionTurn(
+                        role="tool", content=self._tool_call_text(part.get("toolId", "tool"), message), timestamp=ts
+                    )
+                )
             elif kind == "textEditGroup":
                 flush()
                 uri = part.get("uri") or {}
@@ -192,7 +201,9 @@ class CopilotSessionReader(BaseSessionReader):
         ws_file = Path(workspace)
         try:
             folders = json.loads(ws_file.read_text(encoding="utf-8")).get("folders") or []
-            first = next((f.get("path") or file_uri_to_path(f.get("uri", "")) for f in folders if isinstance(f, dict)), "")
+            first = next(
+                (f.get("path") or file_uri_to_path(f.get("uri", "")) for f in folders if isinstance(f, dict)), ""
+            )
             if first:
                 return str((ws_file.parent / first).resolve()) if not first.startswith("/") else first
         except (OSError, ValueError, AttributeError):
@@ -238,7 +249,9 @@ class CopilotSessionReader(BaseSessionReader):
             summary, _ = self._build(path, workspace, self._load_state(path))
             if summary.turn_count == 0:
                 continue  # sessions opened but never used
-            if is_excluded_workspace(summary.workspace_path) or not workspace_matches(workspace_filter, summary.workspace_path):
+            if is_excluded_workspace(summary.workspace_path) or not workspace_matches(
+                workspace_filter, summary.workspace_path
+            ):
                 continue
             sessions.append(summary)
             if len(sessions) >= limit:

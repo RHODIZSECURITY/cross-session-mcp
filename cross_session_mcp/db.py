@@ -14,7 +14,13 @@ from typing import Any
 
 from cross_session_mcp.models import SessionSummary
 from cross_session_mcp.readers.base import BaseSessionReader
-from cross_session_mcp.utils import is_absolute_workspace, is_excluded_workspace, logger, normalize_workspace_filter, now_utc_iso
+from cross_session_mcp.utils import (
+    is_absolute_workspace,
+    is_excluded_workspace,
+    logger,
+    normalize_workspace_filter,
+    now_utc_iso,
+)
 
 SCHEMA_VERSION = 4
 # Digest format version (8-section Extended Handoff = 2). Older digests are invalidated.
@@ -172,6 +178,7 @@ class CrossSessionDB:
         """Indexes recent sessions from every harness. A broken reader does not block the rest."""
         if readers is None:
             from cross_session_mcp.readers import get_all_readers
+
             readers = get_all_readers()
 
         collected: list[SessionSummary] = []
@@ -200,8 +207,17 @@ class CrossSessionDB:
                     status=excluded.status
                 """,
                 [
-                    (s.session_id, s.harness, s.workspace_path, s.title, s.created_at,
-                     s.updated_at, s.turn_count, s.last_prompt, s.status)
+                    (
+                        s.session_id,
+                        s.harness,
+                        s.workspace_path,
+                        s.title,
+                        s.created_at,
+                        s.updated_at,
+                        s.turn_count,
+                        s.last_prompt,
+                        s.status,
+                    )
                     for s in collected
                 ],
             )
@@ -264,7 +280,9 @@ class CrossSessionDB:
             if is_absolute_workspace(ws):
                 ws_fwd = ws.replace("\\", "/").rstrip("/")
                 ws_back = ws.replace("/", "\\").rstrip("\\")
-                conditions.append("(workspace_path = ? OR workspace_path = ? OR workspace_path LIKE ? ESCAPE '\\' OR workspace_path LIKE ? ESCAPE '\\')")
+                conditions.append(
+                    "(workspace_path = ? OR workspace_path = ? OR workspace_path LIKE ? ESCAPE '\\' OR workspace_path LIKE ? ESCAPE '\\')"
+                )
                 params.extend([ws_fwd, ws_back, _like_escape(ws_fwd) + "/%", _like_escape(ws_back) + "\\%"])
             else:
                 conditions.append("workspace_path LIKE ? ESCAPE '\\'")
@@ -279,9 +297,7 @@ class CrossSessionDB:
 
         conn = self._connect()
         try:
-            rows = conn.execute(
-                f"{self._SELECT} {where} ORDER BY updated_at DESC LIMIT ?", params
-            ).fetchall()
+            rows = conn.execute(f"{self._SELECT} {where} ORDER BY updated_at DESC LIMIT ?", params).fetchall()
         finally:
             conn.close()
         return [self._row_to_summary(r) for r in rows]
@@ -291,13 +307,10 @@ class CrossSessionDB:
         conn = self._connect()
         try:
             extra, extra_params = ("AND harness = ?", [harness]) if harness else ("", [])
-            rows = conn.execute(
-                f"{self._SELECT} WHERE session_id = ? {extra}", [session_id] + extra_params
-            ).fetchall()
+            rows = conn.execute(f"{self._SELECT} WHERE session_id = ? {extra}", [session_id] + extra_params).fetchall()
             if not rows:
                 rows = conn.execute(
-                    f"{self._SELECT} WHERE session_id LIKE ? ESCAPE '\\' {extra} "
-                    "ORDER BY updated_at DESC LIMIT 10",
+                    f"{self._SELECT} WHERE session_id LIKE ? ESCAPE '\\' {extra} ORDER BY updated_at DESC LIMIT 10",
                     [_like_escape(session_id) + "%"] + extra_params,
                 ).fetchall()
         finally:
@@ -305,9 +318,7 @@ class CrossSessionDB:
         return [self._row_to_summary(r) for r in rows]
 
     # ------------------------------------------------------------------ digests
-    def get_digest(
-        self, session_id: str, harness: str, source_updated_at: str | None = None
-    ) -> dict[str, Any] | None:
+    def get_digest(self, session_id: str, harness: str, source_updated_at: str | None = None) -> dict[str, Any] | None:
         """Saved digest in the current format, or None if missing or the session moved on since it was
         generated. Without `source_updated_at` it returns the saved one even if stale."""
         conn = self._connect()
@@ -364,9 +375,18 @@ class CrossSessionDB:
                     generated_at=excluded.generated_at,
                     format_version=excluded.format_version
                 """,
-                (session_id, harness, workspace_path, source_updated_at, 1 if digest.get("relevant") else 0,
-                 json.dumps(digest, ensure_ascii=False), handoff_md, model_used, now_utc_iso(),
-                 DIGEST_FORMAT_VERSION),
+                (
+                    session_id,
+                    harness,
+                    workspace_path,
+                    source_updated_at,
+                    1 if digest.get("relevant") else 0,
+                    json.dumps(digest, ensure_ascii=False),
+                    handoff_md,
+                    model_used,
+                    now_utc_iso(),
+                    DIGEST_FORMAT_VERSION,
+                ),
             )
             conn.commit()
         finally:
@@ -397,8 +417,10 @@ class CrossSessionDB:
 
     def search_digests(self, workspace_path: str | None = None) -> list[dict[str, Any]]:
         """Current-format digests (of one exact workspace or all of them) for topic search."""
-        sql = ("SELECT session_id, harness, workspace_path, source_updated_at, digest_json, handoff_md "
-               "FROM session_digests WHERE format_version >= ?")
+        sql = (
+            "SELECT session_id, harness, workspace_path, source_updated_at, digest_json, handoff_md "
+            "FROM session_digests WHERE format_version >= ?"
+        )
         params: list[Any] = [DIGEST_FORMAT_VERSION]
         if workspace_path:
             sql += " AND workspace_path = ?"
@@ -408,8 +430,17 @@ class CrossSessionDB:
             rows = conn.execute(sql, params).fetchall()
         finally:
             conn.close()
-        return [{"session_id": r[0], "harness": r[1], "workspace_path": r[2] or "", "updated_at": r[3] or "",
-                 "digest": json.loads(r[4]), "handoff_md": r[5]} for r in rows]
+        return [
+            {
+                "session_id": r[0],
+                "harness": r[1],
+                "workspace_path": r[2] or "",
+                "updated_at": r[3] or "",
+                "digest": json.loads(r[4]),
+                "handoff_md": r[5],
+            }
+            for r in rows
+        ]
 
     # ------------------------------------------------------------------ maintenance lock
     def acquire_maintenance_lock(self, workspace_path: str, owner: str, ttl: float = MAINTENANCE_LOCK_TTL) -> bool:
@@ -438,7 +469,9 @@ class CrossSessionDB:
     def release_maintenance_lock(self, workspace_path: str, owner: str) -> None:
         conn = self._connect()
         try:
-            conn.execute("DELETE FROM maintenance_locks WHERE workspace_path = ? AND owner = ?", (workspace_path, owner))
+            conn.execute(
+                "DELETE FROM maintenance_locks WHERE workspace_path = ? AND owner = ?", (workspace_path, owner)
+            )
             conn.commit()
         finally:
             conn.close()
@@ -491,8 +524,10 @@ class CrossSessionDB:
 
     def get_entries(self, workspace_path: str | None) -> list[dict[str, Any]]:
         """Entries of one exact workspace, or of all with `workspace_path=None` (they include 'workspace_path')."""
-        sql = ("SELECT entry_id, kind, text, why, scope, evidence_json, status, pinned, text_hash, "
-               "first_seen, last_seen, updated_at, workspace_path FROM memory_entries")
+        sql = (
+            "SELECT entry_id, kind, text, why, scope, evidence_json, status, pinned, text_hash, "
+            "first_seen, last_seen, updated_at, workspace_path FROM memory_entries"
+        )
         params: list[Any] = []
         if workspace_path is not None:
             sql += " WHERE workspace_path = ?"
@@ -505,9 +540,18 @@ class CrossSessionDB:
         entries = []
         for r in rows:
             e = {
-                "id": r[0], "kind": r[1], "text": r[2], "why": r[3] or "", "scope": r[4],
-                "evidence": json.loads(r[5] or "[]"), "status": r[6], "pinned": bool(r[7]),
-                "text_hash": r[8], "first_seen": r[9], "last_seen": r[10], "updated_at": r[11],
+                "id": r[0],
+                "kind": r[1],
+                "text": r[2],
+                "why": r[3] or "",
+                "scope": r[4],
+                "evidence": json.loads(r[5] or "[]"),
+                "status": r[6],
+                "pinned": bool(r[7]),
+                "text_hash": r[8],
+                "first_seen": r[9],
+                "last_seen": r[10],
+                "updated_at": r[11],
             }
             if workspace_path is None:
                 e["workspace_path"] = r[12]
@@ -544,15 +588,30 @@ class CrossSessionDB:
                     conn.execute(
                         "INSERT INTO project_memory (workspace_path, version, rendered_md, window_json, "
                         "state_json, model_used, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (workspace_path, new_version, rendered_md, window_json,
-                         json.dumps(state, ensure_ascii=False), model_used, now),
+                        (
+                            workspace_path,
+                            new_version,
+                            rendered_md,
+                            window_json,
+                            json.dumps(state, ensure_ascii=False),
+                            model_used,
+                            now,
+                        ),
                     )
                 else:
                     cur = conn.execute(
                         "UPDATE project_memory SET version = ?, rendered_md = ?, window_json = ?, state_json = ?, "
                         "model_used = ?, updated_at = ? WHERE workspace_path = ? AND version = ?",
-                        (new_version, rendered_md, window_json, json.dumps(state, ensure_ascii=False),
-                         model_used, now, workspace_path, base_version),
+                        (
+                            new_version,
+                            rendered_md,
+                            window_json,
+                            json.dumps(state, ensure_ascii=False),
+                            model_used,
+                            now,
+                            workspace_path,
+                            base_version,
+                        ),
                     )
                     if cur.rowcount == 0:
                         raise ConcurrentUpdateError(
@@ -564,9 +623,21 @@ class CrossSessionDB:
                     "status, pinned, text_hash, first_seen, last_seen, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
-                        (workspace_path, e["id"], e["kind"], e["text"], e.get("why") or "", e.get("scope"),
-                         json.dumps(e.get("evidence") or []), e["status"], 1 if e.get("pinned") else 0,
-                         e.get("text_hash"), e.get("first_seen"), e.get("last_seen"), e.get("updated_at"))
+                        (
+                            workspace_path,
+                            e["id"],
+                            e["kind"],
+                            e["text"],
+                            e.get("why") or "",
+                            e.get("scope"),
+                            json.dumps(e.get("evidence") or []),
+                            e["status"],
+                            1 if e.get("pinned") else 0,
+                            e.get("text_hash"),
+                            e.get("first_seen"),
+                            e.get("last_seen"),
+                            e.get("updated_at"),
+                        )
                         for e in entries
                     ],
                 )
@@ -597,7 +668,9 @@ class CrossSessionDB:
             ).fetchall()
         finally:
             conn.close()
-        return [{"version": r[0], "model_used": r[1] or "", "created_at": r[2], "window": json.loads(r[3])} for r in rows]
+        return [
+            {"version": r[0], "model_used": r[1] or "", "created_at": r[2], "window": json.loads(r[3])} for r in rows
+        ]
 
     def count_memory_projects(self) -> int:
         conn = self._connect()

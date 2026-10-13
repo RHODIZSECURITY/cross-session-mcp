@@ -50,8 +50,14 @@ def cmd_show(svc: CrossSessionService, args) -> None:
 def cmd_handoff(svc: CrossSessionService, args) -> None:
     print("Generating handoff...", file=sys.stderr)
     workspace = None if args.session_id else (args.workspace or os.getcwd())
-    h = svc.get_handoff(args.session_id, args.harness, focus_area=args.focus, force_refresh=args.force,
-                        workspace=workspace, back=args.back)
+    h = svc.get_handoff(
+        args.session_id,
+        args.harness,
+        focus_area=args.focus,
+        force_refresh=args.force,
+        workspace=workspace,
+        back=args.back,
+    )
     origin = "local bank" if h.from_cache else h.model_used
     print(f"[Source: {origin} · {h.generated_at[:16]} UTC]", file=sys.stderr)
     if args.output:
@@ -82,7 +88,9 @@ def cmd_memory(svc: CrossSessionService, args) -> None:
         print(svc.list_archived(ws) if args.archived else svc.get_project_memory(ws))
     elif action == "update":
         print("Updating memory (may take a while: 1 call per new session + 1 for consolidation)...", file=sys.stderr)
-        result = svc.update_project_memory(ws, sessions=args.sessions, force_refresh=args.force, export_path=args.export)
+        result = svc.update_project_memory(
+            ws, sessions=args.sessions, force_refresh=args.force, export_path=args.export
+        )
         print(result.markdown)
         print(f"[{result.summary()}]", file=sys.stderr)
     elif action == "export":
@@ -94,12 +102,16 @@ def cmd_memory(svc: CrossSessionService, args) -> None:
     elif action == "suggest-rules":
         print(svc.suggest_agent_rules(ws, args.target))
     elif action == "search":
-        print(svc.search_project_memory(args.topic, ws, all_projects=args.all, limit=args.limit,
-                                        synthesize=args.synthesize))
+        print(
+            svc.search_project_memory(
+                args.topic, ws, all_projects=args.all, limit=args.limit, synthesize=args.synthesize
+            )
+        )
 
 
 def cmd_serve(svc: CrossSessionService, args) -> None:
     from cross_session_mcp.server import MCPServer
+
     MCPServer(service=svc).run_stdio()
 
 
@@ -112,8 +124,10 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
         try:
             readable = r.can_read()
             count = len(r.list_sessions(limit=5)) if readable else 0
-            print(f"  {'✅' if readable else '➖'} {r.name:<9} {'readable' if readable else 'not found'}"
-                  f"{f' ({count}+ sessions)' if readable else ''}")
+            print(
+                f"  {'✅' if readable else '➖'} {r.name:<9} {'readable' if readable else 'not found'}"
+                f"{f' ({count}+ sessions)' if readable else ''}"
+            )
         except Exception as exc:
             ok = False
             print(f"  ❌ {r.name:<9} error: {exc}")
@@ -128,8 +142,10 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     formats = svc.db.digest_format_counts()
     print(f"  Saved handoffs: {formats['current']} in the current format, {formats['legacy']} legacy")
     locks = svc.db.active_maintenance_locks()
-    print(f"  Maintenance in progress: {len(locks)}"
-          + "".join(f"\n    - {lk['workspace_path']} ({lk['owner']})" for lk in locks))
+    print(
+        f"  Maintenance in progress: {len(locks)}"
+        + "".join(f"\n    - {lk['workspace_path']} ({lk['owner']})" for lk in locks)
+    )
 
     print("\nGemini synthesis:")
     openai_base = (os.environ.get("CROSS_SESSION_OPENAI_BASE") or "").strip().rstrip("/")
@@ -143,13 +159,17 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
     else:
         cca = antigravity_mod.load_cred()
         if cca is not None:
-            print(f"  ✅ OAuth (Antigravity) configured for {cca.get('email') or 'account'} "
-                  f"(project {cca['project_id']}, secrets not shown)")
+            print(
+                f"  ✅ OAuth (Antigravity) configured for {cca.get('email') or 'account'} "
+                f"(project {cca['project_id']}, secrets not shown)"
+            )
         else:
-            print("  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
-                  "      Set GEMINI_API_KEY or ~/.ai/.gemini_env, log in with "
-                  "`gcloud auth application-default-login` (OAuth), or run "
-                  "`cross-session-mcp antigravity-login` (Google account, no key).")
+            print(
+                "  ⚠️  No key: handoffs fall back to a basic local extractor and the project memory cannot be built.\n"
+                "      Set GEMINI_API_KEY or ~/.ai/.gemini_env, log in with "
+                "`gcloud auth application-default-login` (OAuth), or run "
+                "`cross-session-mcp antigravity-login` (Google account, no key)."
+            )
     print(f"  Models: {', '.join(configured_models())}")
     print(f"  Antigravity SDK: {'available' if HAS_ANTIGRAVITY_SDK else 'not installed (REST is used)'}")
 
@@ -180,12 +200,13 @@ def cmd_antigravity_login(svc: CrossSessionService, args) -> None:
     print("Code exchanged. Discovering Cloud Code Assist project...")
     project = antigravity_mod.discover_project(creds["access"])
     if not project:
-        print("Login failed: no Cloud Code Assist project for this account. "
-              "Ensure the account has Antigravity/Cloud Code Assist access and try again.")
+        print(
+            "Login failed: no Cloud Code Assist project for this account. "
+            "Ensure the account has Antigravity/Cloud Code Assist access and try again."
+        )
         sys.exit(1)
     cred_file = antigravity_mod.save_cred(creds["refresh"], project, creds.get("email", ""))
-    print(f"✅ Antigravity login saved for {creds.get('email') or 'account'} "
-          f"(project {project}) to {cred_file}")
+    print(f"✅ Antigravity login saved for {creds.get('email') or 'account'} (project {project}) to {cred_file}")
     sys.exit(0)
 
 
@@ -215,8 +236,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("handoff", help="Extended Handoff of a session (by ID or by position in the project)")
     p.add_argument("session_id", nargs="?", help="ID or prefix; if omitted, --workspace and --back are used")
     p.add_argument("--workspace", "-w", help="Exact project path (default: the current directory)")
-    p.add_argument("--back", "-b", type=int, default=1, choices=range(1, MAX_BACK + 1), metavar=f"1-{MAX_BACK}",
-                   help="1 = last session, 2 = the one before...")
+    p.add_argument(
+        "--back",
+        "-b",
+        type=int,
+        default=1,
+        choices=range(1, MAX_BACK + 1),
+        metavar=f"1-{MAX_BACK}",
+        help="1 = last session, 2 = the one before...",
+    )
     p.add_argument("--harness", "-H", choices=HARNESSES)
     p.add_argument("--focus", "-f", help="Focus area or special directive")
     p.add_argument("--force", action="store_true", help="Ignore the cache")

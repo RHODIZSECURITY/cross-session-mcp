@@ -8,9 +8,17 @@ NOW = "2026-10-04T12:00:00+00:00"
 
 
 def win(n=8, relevant=True):
-    return [{"key": f"claude:s{i}", "harness": "claude", "session_id": f"sess{i:04d}xx",
-             "updated_at": f"2026-09-{20 - i:02d}T10:00:00+00:00", "relevant": relevant,
-             "summary_line": f"summary {i}"} for i in range(n)]
+    return [
+        {
+            "key": f"claude:s{i}",
+            "harness": "claude",
+            "session_id": f"sess{i:04d}xx",
+            "updated_at": f"2026-09-{20 - i:02d}T10:00:00+00:00",
+            "relevant": relevant,
+            "summary_line": f"summary {i}",
+        }
+        for i in range(n)
+    ]
 
 
 def refs(window):
@@ -18,9 +26,20 @@ def refs(window):
 
 
 def ent(eid, text, **kw):
-    base = dict(id=eid, kind=eid[0], text=text, why="", scope=None, evidence=["claude:s0"], status="active",
-                pinned=False, text_hash=memory.text_hash(text), first_seen="2026-09-01", last_seen="2026-09-19",
-                updated_at="2026-09-01")
+    base = dict(
+        id=eid,
+        kind=eid[0],
+        text=text,
+        why="",
+        scope=None,
+        evidence=["claude:s0"],
+        status="active",
+        pinned=False,
+        text_hash=memory.text_hash(text),
+        first_seen="2026-09-01",
+        last_seen="2026-09-19",
+        updated_at="2026-09-01",
+    )
     base.update(kw)
     return base
 
@@ -31,8 +50,9 @@ def raw(kind, text, ev=("r0",), **kw):
 
 def run(prev, entries, window=None, **extra):
     window = window or win()
-    return apply_consolidation(prev, dict(state=extra.pop("state", []), entries=entries, **extra),
-                               window, refs(window), NOW)
+    return apply_consolidation(
+        prev, dict(state=extra.pop("state", []), entries=entries, **extra), window, refs(window), NOW
+    )
 
 
 def by_id(entries):
@@ -41,8 +61,9 @@ def by_id(entries):
 
 def test_new_ids_are_stable_and_never_reuse_archived():
     prev = [ent("D1", "one", status="archived"), ent("D2", "two totally different")]
-    out, _ = run(prev, [dict(raw("D", "new decision about cache"), id=None),
-                        dict(raw("D", "two totally different"), id="D2")])
+    out, _ = run(
+        prev, [dict(raw("D", "new decision about cache"), id=None), dict(raw("D", "two totally different"), id="D2")]
+    )
     ids = by_id(out)
     assert "D3" in ids and ids["D3"]["text"] == "new decision about cache"  # D1 is not reused
     assert ids["D2"]["status"] == "active"
@@ -54,8 +75,9 @@ def test_existing_id_kept_when_text_changes():
 
 
 def test_jaccard_merges_with_active_entry_of_same_kind():
-    out, _ = run([ent("D1", "use sqlite in WAL mode for the cache")],
-                 [raw("D", "Use sqlite in WAL mode for the cache.")])
+    out, _ = run(
+        [ent("D1", "use sqlite in WAL mode for the cache")], [raw("D", "Use sqlite in WAL mode for the cache.")]
+    )
     assert [e["id"] for e in out if e["kind"] == "D"] == ["D1"]
 
 
@@ -96,16 +118,19 @@ def test_rule_that_stops_appearing_is_archived():
 
 
 def test_a_candidates_with_high_cumulative_evidence_are_exempt():
-    prev = [ent("A1", "repeated rule", evidence=["claude:o1", "claude:o2", "claude:o3"]),
-            ent("A2", "rule with little evidence", evidence=["claude:o1"])]
+    prev = [
+        ent("A1", "repeated rule", evidence=["claude:o1", "claude:o2", "claude:o3"]),
+        ent("A2", "rule with little evidence", evidence=["claude:o1"]),
+    ]
     out, _ = run(prev, [])
     assert by_id(out)["A1"]["status"] == "active" and by_id(out)["A2"]["status"] == "archived"
 
 
 def test_reverted_decision_is_superseded():
     prev = [ent("D1", "use redis for the queue")]
-    out, _ = run(prev, [dict(raw("D", "use sqlite for the queue, redis dropped", why="fewer dependencies"),
-                             supersedes="D1")])
+    out, _ = run(
+        prev, [dict(raw("D", "use sqlite for the queue, redis dropped", why="fewer dependencies"), supersedes="D1")]
+    )
     ids = by_id(out)
     assert ids["D1"]["status"] == "superseded"
     md = render_markdown("/p/app", out, win(), [], "m", 2, NOW)
@@ -114,8 +139,10 @@ def test_reverted_decision_is_superseded():
 
 def test_too_many_entries_are_limited_and_archived():
     window = win(8)
-    llm = [raw("D", f"decision number {i} about topic{i} different{i}", ev=tuple(f"r{j}" for j in range(i % 8 + 1)))
-           for i in range(25)]
+    llm = [
+        raw("D", f"decision number {i} about topic{i} different{i}", ev=tuple(f"r{j}" for j in range(i % 8 + 1)))
+        for i in range(25)
+    ]
     out, _ = run([], llm, window)
     active = [e for e in out if e["kind"] == "D" and e["status"] == "active"]
     assert len(active) == 15 and len([e for e in out if e["status"] == "archived"]) == 10
@@ -126,8 +153,9 @@ def test_too_many_entries_are_limited_and_archived():
 
 
 def test_secrets_and_pii_are_redacted_in_entries():
-    out, state = run([], [raw("D", "use token ghp_" + "a" * 36 + " and write to x@y.com")],
-                     state=["contact 612 345 678"])
+    out, state = run(
+        [], [raw("D", "use token ghp_" + "a" * 36 + " and write to x@y.com")], state=["contact 612 345 678"]
+    )
     assert "ghp_" not in out[0]["text"] and "x@y.com" not in out[0]["text"] and "[REDACTED]" in out[0]["text"]
     assert "612" not in state[0]
 
@@ -135,13 +163,28 @@ def test_secrets_and_pii_are_redacted_in_entries():
 def test_render_structure_header_and_log():
     window = win(3)
     window[2]["relevant"] = False
-    out, _ = run([], [raw("D", "dec", why="because"), raw("T", "symptom → cause → fix"),
-                      raw("C", "pytest -q", why="tests"), raw("P", "finish x"), raw("A", "rule", scope="claude")],
-                 window)
+    out, _ = run(
+        [],
+        [
+            raw("D", "dec", why="because"),
+            raw("T", "symptom → cause → fix"),
+            raw("C", "pytest -q", why="tests"),
+            raw("P", "finish x"),
+            raw("A", "rule", scope="claude"),
+        ],
+        window,
+    )
     md = render_markdown("/home/u/my-app", out, window, ["state one"], "gemini-x", 3, NOW)
     titles = [line for line in md.splitlines() if line.startswith("## ")]
-    assert titles == ["## Current state", "## Active decisions", "## Pitfalls → fix",
-                      "## Commands that work", "## Pending", "## AGENTS.md candidates", "## Log"]
+    assert titles == [
+        "## Current state",
+        "## Active decisions",
+        "## Pitfalls → fix",
+        "## Commands that work",
+        "## Pending",
+        "## AGENTS.md candidates",
+        "## Log",
+    ]
     assert "3 sessions (claude 3)" in md and "gemini-x" in md and "v3" in md
     assert "**[D1]** dec — because _(evidence 1/3)_" in md
     assert "`pytest -q` — tests" in md and "CLAUDE.md" in md
@@ -164,9 +207,21 @@ def test_render_never_exceeds_max_lines():
 
 def test_consolidation_prompt_marks_pinned_as_immutable():
     entries = [ent("D1", "pinned", pinned=True), ent("D2", "free")]
-    prompt = build_consolidation_prompt(entries, [{"ref": "r0", "harness": "claude", "updated_at": "2026-09-19",
-                                                   "digest": {"summary_line": "something", "decisions": [{"text": "t", "why": "w"}]}}],
-                                        {"claude:s0": "r0"}, "/p", 2, "2026-10-04")
+    prompt = build_consolidation_prompt(
+        entries,
+        [
+            {
+                "ref": "r0",
+                "harness": "claude",
+                "updated_at": "2026-09-19",
+                "digest": {"summary_line": "something", "decisions": [{"text": "t", "why": "w"}]},
+            }
+        ],
+        {"claude:s0": "r0"},
+        "/p",
+        2,
+        "2026-10-04",
+    )
     pinned_line = next(line for line in prompt.splitlines() if line.startswith("[D1]"))
     free_line = next(line for line in prompt.splitlines() if line.startswith("[D2]"))
     assert "IMMUTABLE" in pinned_line and "IMMUTABLE" not in free_line

@@ -31,7 +31,10 @@ from cross_session_mcp.utils import logger
 
 # Public OAuth client identifiers embedded in the Antigravity desktop client
 # (overridable via env). These identify the app to Google; they are not secrets.
-CLIENT_ID = os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_ID") or "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+CLIENT_ID = (
+    os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_ID")
+    or "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+)
 # No default: push protection (and hygiene) forbids shipping it. Same
 # public value as the Antigravity desktop client; export it (see README).
 CLIENT_SECRET = os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_SECRET") or ""
@@ -39,16 +42,14 @@ CLIENT_SECRET = os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_SECRET") or ""
 
 def _secret_from_file() -> str:
     """Reads the client secret from a KEY=VALUE file (default ~/.ai/.antigravity_env). Empty when absent."""
-    secret_file = Path(
-        os.environ.get(SECRET_FILE_ENV_VAR, Path.home() / ".ai" / ".antigravity_env")
-    ).expanduser()
+    secret_file = Path(os.environ.get(SECRET_FILE_ENV_VAR, Path.home() / ".ai" / ".antigravity_env")).expanduser()
     try:
         if not secret_file.is_file():
             return ""
         for line in secret_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line.startswith("export "):
-                line = line[len("export "):].strip()
+                line = line[len("export ") :].strip()
             if line.startswith("GOOGLE_ANTIGRAVITY_CLIENT_SECRET="):
                 return line.split("=", 1)[1].strip().strip("'\"")
     except OSError:
@@ -63,6 +64,8 @@ def _client_secret() -> str:
     if from_file:
         return from_file
     raise ValueError("set GOOGLE_ANTIGRAVITY_CLIENT_SECRET or store it in ~/.ai/.antigravity_env (see README)")
+
+
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 PROD_API = "https://cloudcode-pa.googleapis.com"
@@ -136,8 +139,12 @@ def save_cred(refresh_token: str, project_id: str, email: str = "", path: Path |
     cred_file = path or default_cred_path()
     cred_file.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(
-        {"refresh_token": refresh_token, "project_id": project_id, "email": email,
-         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        {
+            "refresh_token": refresh_token,
+            "project_id": project_id,
+            "email": email,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
     )
     with open(os.open(str(cred_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
         handle.write(payload)
@@ -263,8 +270,12 @@ def _load_project(access: str, timeout: int) -> str:
         data = _post(
             f"{api_base()}/{API_VERSION}:loadCodeAssist",
             json.dumps({"metadata": {"ideType": "ANTIGRAVITY"}}),
-            {"Authorization": f"Bearer {access}", "Accept": "*/*", "Content-Type": "application/json",
-             "User-Agent": antigravity_user_agent()},
+            {
+                "Authorization": f"Bearer {access}",
+                "Accept": "*/*",
+                "Content-Type": "application/json",
+                "User-Agent": antigravity_user_agent(),
+            },
             timeout,
         )
     except Exception:
@@ -277,11 +288,18 @@ def _onboard_project(access: str, timeout: int) -> str:
         try:
             data = _post(
                 f"{DAILY_API}/{API_VERSION}:onboardUser",
-                json.dumps({"tier_id": "free-tier",
-                            "metadata": {"ide_type": "ANTIGRAVITY", "ide_name": "antigravity",
-                                         "ide_version": IDE_VERSION}}),
-                {"Authorization": f"Bearer {access}", "Accept": "*/*", "Content-Type": "application/json",
-                 "User-Agent": antigravity_user_agent()},
+                json.dumps(
+                    {
+                        "tier_id": "free-tier",
+                        "metadata": {"ide_type": "ANTIGRAVITY", "ide_name": "antigravity", "ide_version": IDE_VERSION},
+                    }
+                ),
+                {
+                    "Authorization": f"Bearer {access}",
+                    "Accept": "*/*",
+                    "Content-Type": "application/json",
+                    "User-Agent": antigravity_user_agent(),
+                },
                 timeout,
             )
         except urllib.error.HTTPError as exc:
