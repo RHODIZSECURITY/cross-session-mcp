@@ -132,8 +132,11 @@ def cmd_doctor(svc: CrossSessionService, args) -> None:
           + "".join(f"\n    - {lk['workspace_path']} ({lk['owner']})" for lk in locks))
 
     print("\nGemini synthesis:")
+    openai_base = (os.environ.get("CROSS_SESSION_OPENAI_BASE") or "").strip().rstrip("/")
     key = get_gemini_api_key()
-    if key:
+    if openai_base:
+        print(f"  ✅ OpenAI-compatible backend {openai_base} (explicit, wins when set)")
+    elif key:
         print("  ✅ Key configured (value not shown)")
     elif load_adc() is not None:
         print("  ✅ OAuth (ADC) configured, no API key needed (secrets not shown)")

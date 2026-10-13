@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- OpenAI-compatible transport: `CROSS_SESSION_OPENAI_BASE` (+ optional
+  `CROSS_SESSION_OPENAI_KEY`) routes synthesis (Markdown and JSON digests) to any
+  OpenAI-compatible endpoint with model passthrough. Explicit opt-in, wins when set.
+
+### Added
 - Antigravity login (fork only): `cross-session-mcp antigravity-login` performs Google
   OAuth (PKCE) with the Antigravity desktop client identifiers and discovers the Cloud
   Code Assist project; synthesis then uses that transport with automatic refresh and one
