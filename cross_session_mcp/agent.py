@@ -51,6 +51,8 @@ HANDOFF_SECTION_COUNT = 8
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 ADC_ENV_VAR = "CROSS_SESSION_ADC_FILE"
 GOOGLE_PROJECT_ENV_VAR = "CROSS_SESSION_GOOGLE_PROJECT"
+OPENAI_BASE_ENV_VAR = "CROSS_SESSION_OPENAI_BASE"
+OPENAI_KEY_ENV_VAR = "CROSS_SESSION_OPENAI_KEY"
 _TOKEN_REFRESH_MARGIN = 60  # seconds: refresh before the token actually expires
 
 
@@ -802,8 +804,83 @@ class GeminiHandoffAgent:
                         return json.loads(response.read().decode("utf-8"))
             raise
 
+    def _openai_base(self) -> str:
+        """Explicit OpenAI-compatible backend (e.g. a local proxy). Empty when not configured."""
+        return (os.environ.get(OPENAI_BASE_ENV_VAR) or "").strip().rstrip("/")
+
+    @staticmethod
+    def _openai_messages(payload: dict) -> list:
+        """Translates our single-turn Gemini payload to OpenAI chat messages."""
+        messages = []
+        instruction = payload.get("systemInstruction") or {}
+        sys_parts = instruction.get("parts") if isinstance(instruction, dict) else None
+        sys_text = " ".join(
+            part.get("text", "") for part in sys_parts
+            if isinstance(part, dict) and part.get("text", "").strip()
+        ) if isinstance(sys_parts, list) else ""
+        if sys_text.strip():
+            messages.append({"role": "system", "content": sys_text})
+        user_texts = []
+        for content in payload.get("contents") or []:
+            for part in (content.get("parts") or []):
+                if isinstance(part, dict) and part.get("text", "").strip():
+                    user_texts.append(part["text"])
+        messages.append({"role": "user", "content": "\n".join(user_texts)})
+        return messages
+
+    def _call_model_openai(self, model: str, payload: dict, base: str, json_mode: bool):
+        """One OpenAI-compatible chat call. Returns (text, finishReason) or None on failure."""
+        generation = payload.get("generationConfig") or {}
+        body = {"model": model, "messages": self._openai_messages(payload)}
+        if isinstance(generation.get("temperature"), (int, float)):
+            body["temperature"] = generation["temperature"]
+        if isinstance(generation.get("maxOutputTokens"), int):
+            body["max_tokens"] = generation["maxOutputTokens"]
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        headers = {"Content-Type": "application/json"}
+        key = (os.environ.get(OPENAI_KEY_ENV_VAR) or "").strip()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        req = urllib.request.Request(
+            f"{base}/chat/completions", data=json.dumps(body).encode("utf-8"),
+            headers=headers, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            resp_body = ""
+            try:
+                resp_body = exc.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                pass
+            logger.warning("OpenAI-compatible %s answered HTTP %s: %s", model, exc.code, redact(resp_body))
+            return None
+        except Exception as exc:
+            logger.warning("OpenAI-compatible %s failed (%s): %s", model, type(exc).__name__, redact(str(exc)))
+            return None
+        if not isinstance(data, dict):
+            return None
+        choices = data.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            logger.warning("OpenAI-compatible %s returned no choices", model)
+            return None
+        message = choices[0].get("message") or {}
+        text = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            logger.warning("OpenAI-compatible %s returned no content", model)
+            return None
+        finish = choices[0].get("finish_reason") or ""
+        return (text.strip(), "MAX_TOKENS" if finish == "length" else finish)
+
     def _call_model(self, model: str, payload: dict) -> tuple[str, str] | None:
         """One REST request to `model`, trying transports in order. Returns (text, finishReason) or None."""
+        base = self._openai_base()
+        if base:
+            generation = payload.get("generationConfig") or {}
+            json_mode = generation.get("responseMimeType") == "application/json"
+            return self._call_model_openai(model, payload, base, json_mode)
         self._transport_auth_failed = False
         if self.api_key:
             # An explicit key never falls through: its failure must stay visible.
@@ -905,7 +982,7 @@ class GeminiHandoffAgent:
     # ------------------------------------------------------------------ project memory
     @property
     def available(self) -> bool:
-        return bool(self.api_key or self.oauth.configured or self.cca.configured)
+        return bool(self.api_key or self.oauth.configured or self.cca.configured or self._openai_base())
 
     @staticmethod
     def _transcript_fields(detail: SessionDetail) -> dict[str, Any]:

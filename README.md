@@ -376,6 +376,19 @@ Precedence: an explicit API key (`GEMINI_API_KEY` / `GOOGLE_API_KEY` / file) sti
 when set; OAuth is the fallback. On a 401 the server refreshes the token once and retries.
 Path override: `CROSS_SESSION_ADC_FILE`.
 
+### OpenAI-compatible backend (e.g. a local proxy you already trust)
+
+Point synthesis at any OpenAI-compatible endpoint instead of Google directly:
+
+```bash
+export CROSS_SESSION_OPENAI_BASE="http://127.0.0.1:10100/v1"
+export CROSS_SESSION_MODELS="google-antigravity/gemini-3.8-flash"
+```
+
+Model names pass through untouched. Add `CROSS_SESSION_OPENAI_KEY` only if the
+endpoint needs a bearer. Explicitly set means explicitly used: it takes
+precedence over key/ADC/Antigravity. `doctor` reports it without showing secrets.
+
 ### Antigravity login (Google account, no API key, no gcloud)
 
 If you use Google Antigravity / Cloud Code Assist with your Google account, the server can
@@ -420,6 +433,8 @@ and the call retries. This transport lives in this fork only.
 | `CROSS_SESSION_ADC_FILE` | `~/.config/gcloud/application_default_credentials.json` | OAuth credential file (no API key needed) |
 | `CROSS_SESSION_GOOGLE_PROJECT` | — | Cloud project billed for quota (paid-tier terms) |
 | `CROSS_SESSION_ANTIGRAVITY_FILE` | `~/.ai/antigravity_adc.json` | Antigravity OAuth credential (no key, no gcloud) |
+| `CROSS_SESSION_OPENAI_BASE` | — | OpenAI-compatible backend (e.g. local proxy); explicit opt-in, wins when set |
+| `CROSS_SESSION_OPENAI_KEY` | — | Optional bearer for the above |
 | `CROSS_SESSION_MODELS` | `gemini-flash-lite-latest,gemini-3.8-flash,gemini-flash-latest` | Models, in order of preference |
 | `CROSS_SESSION_TRANSCRIPT_BUDGET` | `160000` | Transcript characters sent to the model |
 | `CROSS_SESSION_MAX_OUTPUT_TOKENS` | `8192` | Maximum handoff length |

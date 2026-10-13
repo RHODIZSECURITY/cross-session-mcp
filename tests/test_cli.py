@@ -109,6 +109,7 @@ def test_doctor_with_empty_home_and_no_key(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("CROSS_SESSION_KEY_FILE", str(tmp_path / "missing"))
     monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "missing"))
     monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_FILE", str(tmp_path / "missing"))
+    monkeypatch.delenv("CROSS_SESSION_OPENAI_BASE", raising=False)
     monkeypatch.delenv("CROSS_SESSION_GOOGLE_PROJECT", raising=False)
     svc = CrossSessionService(db=CrossSessionDB(tmp_path / "doctor.db"), agent=FakeAgent())
     with pytest.raises(SystemExit) as exc:
