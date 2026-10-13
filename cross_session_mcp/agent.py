@@ -40,7 +40,7 @@ except Exception:
     HAS_ANTIGRAVITY_SDK = False
 
 
-DEFAULT_MODELS = ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-flash-latest"]
+DEFAULT_MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]
 GEMINI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 HANDOFF_SECTION_COUNT = 8
 
