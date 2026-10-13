@@ -277,3 +277,89 @@ def test_nothing_configured_returns_none(monkeypatch, tmp_path):
     agent = GeminiHandoffAgent()
     assert agent.available is False
     assert agent._generate_markdown("sys", "prompt") == (None, "")
+
+
+def _write_adc(path):
+    import json as _json
+
+    path.write_text(_json.dumps({"type": "authorized_user", "client_id": "c", "client_secret": "s", "refresh_token": "r"}))
+    return path
+
+
+def _http_error(url, code):
+    return urllib.error.HTTPError(url, code, "err", {}, io.BytesIO(b"{}"))
+
+
+def test_adc_403_falls_through_to_cca(monkeypatch, tmp_path):
+    isolated_env(monkeypatch, tmp_path)
+    adc = _write_adc(tmp_path / "adc.json")
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(adc))
+    cca_file = tmp_path / "cca.json"
+    save_cred("ref-1", "proj-1", "a@b.c", cca_file)
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_FILE", str(cca_file))
+    hits = []
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            hits.append("token")
+            body = dict(urllib.parse.parse_qsl(req.data.decode()))
+            if body.get("refresh_token") == "r":
+                return token_payload(**{"access_token": "adc-tok"})
+            return token_payload()
+        if "generativelanguage.googleapis.com" in req.full_url:
+            hits.append("developer")
+            raise _http_error(req.full_url, 403)
+        if "cloudcode-pa.googleapis.com" in req.full_url:
+            hits.append("cca")
+            auth = {k.lower(): v for k, v in req.headers.items()}["authorization"]
+            assert auth == "Bearer acc-1"
+            return _gemini_ok("via-fallthrough")
+        raise AssertionError(req.full_url)
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    agent = GeminiHandoffAgent()
+    text, _ = agent._generate_markdown("sys", "prompt")
+    assert text == "via-fallthrough"
+    assert "developer" in hits and "cca" in hits
+
+
+def test_adc_400_does_not_fall_through(monkeypatch, tmp_path):
+    isolated_env(monkeypatch, tmp_path)
+    adc = _write_adc(tmp_path / "adc.json")
+    monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(adc))
+    cca_file = tmp_path / "cca.json"
+    save_cred("ref-1", "proj-1", "a@b.c", cca_file)
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_FILE", str(cca_file))
+    hits = []
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            return token_payload(**{"access_token": "adc-tok"})
+        if "generativelanguage.googleapis.com" in req.full_url:
+            hits.append("developer")
+            raise _http_error(req.full_url, 400)
+        hits.append("other:" + req.full_url)
+        raise AssertionError("must not try another transport on 400")
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    agent = GeminiHandoffAgent()
+    assert agent._generate_markdown("sys", "prompt") == (None, "")
+    assert hits == ["developer"]
+
+
+def test_key_401_never_falls_through(monkeypatch, tmp_path):
+    isolated_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("GEMINI_API_KEY", "key-1")
+    cca_file = tmp_path / "cca.json"
+    save_cred("ref-1", "proj-1", "a@b.c", cca_file)
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_FILE", str(cca_file))
+    hits = []
+
+    def fake_urlopen(req, timeout):
+        hits.append(req.full_url)
+        raise _http_error(req.full_url, 401)
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    agent = GeminiHandoffAgent()
+    assert agent._generate_markdown("sys", "prompt") == (None, "")
+    assert all("cloudcode-pa" not in h for h in hits)

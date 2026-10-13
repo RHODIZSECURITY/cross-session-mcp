@@ -23,6 +23,7 @@ class FakeResponse(io.BytesIO):
 
 def isolated_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CROSS_SESSION_ADC_FILE", str(tmp_path / "none"))
+    monkeypatch.setenv("CROSS_SESSION_ANTIGRAVITY_FILE", str(tmp_path / "none"))
     monkeypatch.setenv("CROSS_SESSION_DISABLE_SDK", "1")
     monkeypatch.setenv("CROSS_SESSION_MODELS", "model-a")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)

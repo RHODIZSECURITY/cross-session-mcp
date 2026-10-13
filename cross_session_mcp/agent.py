@@ -753,9 +753,22 @@ class GeminiHandoffAgent:
             raise
 
     def _call_model(self, model: str, payload: dict) -> tuple[str, str] | None:
-        """One REST request to `model`. Returns (text, finishReason) or None on failure."""
-        if self.cca.configured and not self.api_key and not self.oauth.configured:
+        """One REST request to `model`, trying transports in order. Returns (text, finishReason) or None."""
+        self._transport_auth_failed = False
+        if self.api_key:
+            # An explicit key never falls through: its failure must stay visible.
+            return self._call_model_developer(model, payload)
+        if self.oauth.configured:
+            result = self._call_model_developer(model, payload)
+            if result is not None or not self._transport_auth_failed:
+                return result
+            logger.warning("Gemini ADC auth failed; falling through to Antigravity transport")
+        if self.cca.configured:
             return self._call_model_cca(model, payload)
+        return self._call_model_developer(model, payload)
+
+    def _call_model_developer(self, model: str, payload: dict) -> tuple[str, str] | None:
+        """One Developer-API REST request to `model`. Returns (text, finishReason) or None on failure."""
         headers = self._auth_headers()
         if headers is None:
             return None
@@ -763,6 +776,8 @@ class GeminiHandoffAgent:
         try:
             data = self._post_model(model, data_bytes, headers, refresh_on_401=not self.api_key)
         except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                self._transport_auth_failed = True
             body = ""
             try:
                 body = exc.read().decode("utf-8", "replace")[:300]
