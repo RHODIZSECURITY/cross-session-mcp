@@ -92,7 +92,8 @@ def test_exchange_and_credential_roundtrip(monkeypatch, tmp_path):
     saved = save_cred(creds["refresh"], "proj-9", "a@b.c", target)
     import os as _os
 
-    assert _os.stat(saved).st_mode & 0o777 == 0o600
+    if _os.name != "nt":
+        assert _os.stat(saved).st_mode & 0o777 == 0o600
     loaded = load_cred(target)
     assert loaded == {"refresh_token": "ref-1", "project_id": "proj-9", "email": "a@b.c"}
 
@@ -189,7 +190,8 @@ def test_discover_hard_failure_empty(monkeypatch):
 
 def test_refresh_keeps_old_token_on_missing(monkeypatch):
     monkeypatch.setattr(
-        ag_mod.urllib.request, "urlopen",
+        ag_mod.urllib.request,
+        "urlopen",
         lambda req, timeout: FakeResponse(json.dumps({"access_token": "new-acc"}).encode()),
     )
     out = refresh_access("old-ref")
@@ -225,7 +227,9 @@ def test_envelope_shape_and_ua(monkeypatch):
 
 def _gemini_ok(text="via-cca"):
     return FakeResponse(
-        json.dumps({"response": {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": "STOP"}]}}).encode()
+        json.dumps(
+            {"response": {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": "STOP"}]}}
+        ).encode()
     )
 
 
@@ -301,7 +305,9 @@ def test_nothing_configured_returns_none(monkeypatch, tmp_path):
 def _write_adc(path):
     import json as _json
 
-    path.write_text(_json.dumps({"type": "authorized_user", "client_id": "c", "client_secret": "s", "refresh_token": "r"}))
+    path.write_text(
+        _json.dumps({"type": "authorized_user", "client_id": "c", "client_secret": "s", "refresh_token": "r"})
+    )
     return path
 
 
@@ -437,9 +443,13 @@ def test_cca_scrubs_rejected_system_text(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
     payload = {
         "contents": [{"role": "user", "parts": [{"text": "billing header talk here is kept"}]}],
-        "systemInstruction": {"parts": [{
-            "text": "x-anthropic-billing-header: abc\nYou are helpful.\n\nYou are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nDo the task."
-        }]},
+        "systemInstruction": {
+            "parts": [
+                {
+                    "text": "x-anthropic-billing-header: abc\nYou are helpful.\n\nYou are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nDo the task."
+                }
+            ]
+        },
     }
     text, _ = agent._call_model_cca("gemini-3.8-flash", payload)
     assert text == "via-cca"

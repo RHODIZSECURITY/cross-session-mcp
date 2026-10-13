@@ -55,6 +55,7 @@ def test_live_bank_layer(service):
     if not get_gemini_api_key():
         pytest.skip("No Gemini key")
     from cross_session_mcp.server import cap_output, max_output_chars
+
     workspace = str(Path(__file__).resolve().parent.parent)
     server = MCPServer(service=service)  # turns on current-session detection and the background
     service.sync(force=True)
@@ -80,7 +81,7 @@ def test_live_bank_layer(service):
     entries = service.db.get_entries(workspace)
     word = max((w for e in entries for w in e["text"].split() if len(w) > 6), key=len)
     found = tool("search_project_memory", {"topic": word, "workspace_path": workspace})
-    print(f"\nSearch \"{word}\":\n{found[:600]}")
+    print(f'\nSearch "{word}":\n{found[:600]}')
     assert "match(es)" in found
     archived = [e for e in entries if e["status"] == "archived"]
     if archived:

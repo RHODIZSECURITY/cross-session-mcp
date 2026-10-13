@@ -41,8 +41,18 @@ class CodexSessionReader(BaseSessionReader):
             try:
                 cols = self._columns(conn, "threads")
                 wanted = [
-                    "id", "title", "name", "cwd", "created_at", "updated_at", "created_at_ms",
-                    "updated_at_ms", "preview", "first_user_message", "rollout_path", "archived",
+                    "id",
+                    "title",
+                    "name",
+                    "cwd",
+                    "created_at",
+                    "updated_at",
+                    "created_at_ms",
+                    "updated_at_ms",
+                    "preview",
+                    "first_user_message",
+                    "rollout_path",
+                    "archived",
                 ]
                 select = ", ".join(c for c in wanted if c in cols)
                 order = "updated_at_ms" if "updated_at_ms" in cols else "updated_at"
@@ -83,7 +93,8 @@ class CodexSessionReader(BaseSessionReader):
         fetch = limit * 4 if workspace_filter else limit
         sessions = [self._row_to_summary(r) for r in self._query(limit=fetch)]
         return [
-            s for s in sessions
+            s
+            for s in sessions
             if not is_excluded_workspace(s.workspace_path) and workspace_matches(workspace_filter, s.workspace_path)
         ][:limit]
 
@@ -134,12 +145,22 @@ class CodexSessionReader(BaseSessionReader):
             return [SessionTurn(role=role, content=truncate(text, TEXT_TURN_LIMIT), timestamp=ts)]
         if itype in ("function_call", "custom_tool_call"):
             args = item.get("arguments") if "arguments" in item else item.get("input")
-            return [SessionTurn(role="tool", content=self._tool_call_text(item.get("name", "tool"), args), timestamp=ts)]
+            return [
+                SessionTurn(role="tool", content=self._tool_call_text(item.get("name", "tool"), args), timestamp=ts)
+            ]
         if itype == "local_shell_call":
             action = item.get("action") or {}
-            return [SessionTurn(role="tool", content=self._tool_call_text("shell", action.get("command", action)), timestamp=ts)]
+            return [
+                SessionTurn(
+                    role="tool", content=self._tool_call_text("shell", action.get("command", action)), timestamp=ts
+                )
+            ]
         if itype in ("function_call_output", "custom_tool_call_output", "local_shell_call_output"):
-            return [SessionTurn(role="tool", content=truncate(self._output_text(item.get("output")), TOOL_TURN_LIMIT), timestamp=ts)]
+            return [
+                SessionTurn(
+                    role="tool", content=truncate(self._output_text(item.get("output")), TOOL_TURN_LIMIT), timestamp=ts
+                )
+            ]
         return []  # 'reasoning' and other internal events
 
     def _parse_rollout(self, path: Path) -> tuple[list[SessionTurn], dict[str, Any]]:

@@ -101,8 +101,15 @@ def test_doctor_with_empty_home_and_no_key(tmp_path, monkeypatch, capsys):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    for var in ("CROSS_SESSION_CLAUDE_DIR", "CROSS_SESSION_AGY_DIRS", "CROSS_SESSION_OPENCODE_DB",
-                "CROSS_SESSION_CODEX_HOME", "CROSS_SESSION_CURSOR_DIR", "CROSS_SESSION_VSCODE_DIRS"):
+    monkeypatch.setenv("USERPROFILE", str(home))
+    for var in (
+        "CROSS_SESSION_CLAUDE_DIR",
+        "CROSS_SESSION_AGY_DIRS",
+        "CROSS_SESSION_OPENCODE_DB",
+        "CROSS_SESSION_CODEX_HOME",
+        "CROSS_SESSION_CURSOR_DIR",
+        "CROSS_SESSION_VSCODE_DIRS",
+    ):
         monkeypatch.delenv(var, raising=False)
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)

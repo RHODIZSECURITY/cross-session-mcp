@@ -31,26 +31,37 @@ class FakeResponse(io.BytesIO):
 
 def digest_json(**over):
     body = "\n".join(f"{h}\n- item" for h in i18n.handoff_sections())
-    d = {"handoff_markdown": f"{body}\nKey {SECRET} from {EMAIL}", "relevant": True,
-         "relevance_reason": "changes", "summary_line": "Fixed the login\nin two lines",
-         "decisions": [{"text": "Use sqlite", "why": "no dependencies"}],
-         "pitfalls": [{"symptom": "s", "cause": "c", "fix": "f"}],
-         "commands": [{"cmd": "pytest -q", "purpose": "tests"}], "pending": ["p1"],
-         "agents_md_candidates": [{"rule": "Answer in English", "scope": "universal"}],
-         "suggested_skills": ["handoff"]}
+    d = {
+        "handoff_markdown": f"{body}\nKey {SECRET} from {EMAIL}",
+        "relevant": True,
+        "relevance_reason": "changes",
+        "summary_line": "Fixed the login\nin two lines",
+        "decisions": [{"text": "Use sqlite", "why": "no dependencies"}],
+        "pitfalls": [{"symptom": "s", "cause": "c", "fix": "f"}],
+        "commands": [{"cmd": "pytest -q", "purpose": "tests"}],
+        "pending": ["p1"],
+        "agents_md_candidates": [{"rule": "Answer in English", "scope": "universal"}],
+        "suggested_skills": ["handoff"],
+    }
     d.update(over)
     return d
 
 
 def reply(obj, finish="STOP"):
-    body = {"candidates": [{"content": {"parts": [{"text": obj if isinstance(obj, str) else json.dumps(obj)}]},
-                            "finishReason": finish}]}
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": obj if isinstance(obj, str) else json.dumps(obj)}]}, "finishReason": finish}
+        ]
+    }
     return FakeResponse(json.dumps(body).encode())
 
 
 def detail():
-    turns = [SessionTurn("user", f"Fix the login. Key {SECRET}. Contact {EMAIL}"),
-             SessionTurn("assistant", "Checking auth.py"), SessionTurn("user", "Thanks")]
+    turns = [
+        SessionTurn("user", f"Fix the login. Key {SECRET}. Contact {EMAIL}"),
+        SessionTurn("assistant", "Checking auth.py"),
+        SessionTurn("user", "Thanks"),
+    ]
     return SessionDetail(SessionSummary("s1", "claude", "/p", "T", updated_at="2026-09-01T10:00:00+00:00"), turns)
 
 
@@ -68,8 +79,17 @@ def env(monkeypatch, tmp_path):
 
 def test_digest_prompt_has_the_eight_handoff_sections_in_order_and_no_tmp_reference():
     sections = i18n.handoff_sections()
-    fields = dict(harness="claude", workspace="/p", session_id="s1", title="T", turns_text="x",
-                  total_turns=1, included_turns=1, handoff_spec=i18n.handoff_spec(), last_user="do X")
+    fields = dict(
+        harness="claude",
+        workspace="/p",
+        session_id="s1",
+        title="T",
+        turns_text="x",
+        total_turns=1,
+        included_turns=1,
+        handoff_spec=i18n.handoff_spec(),
+        last_user="do X",
+    )
     prompt = MASTER_DIGEST_TEMPLATE.format(**fields)
     positions = [prompt.index(section) for section in sections]
     assert positions == sorted(positions) and len(sections) == 8
@@ -82,14 +102,19 @@ def test_digest_prompt_has_the_eight_handoff_sections_in_order_and_no_tmp_refere
 
 
 def test_digest_without_the_eight_sections_is_rejected(monkeypatch):
-    monkeypatch.setattr(agent_mod.urllib.request, "urlopen",
-                        lambda req, timeout: reply(digest_json(handoff_markdown="### 1. A single section")))
+    monkeypatch.setattr(
+        agent_mod.urllib.request,
+        "urlopen",
+        lambda req, timeout: reply(digest_json(handoff_markdown="### 1. A single section")),
+    )
     assert GeminiHandoffAgent(api_key="k").generate_digest(detail()) is None
 
 
 def test_schemas_require_core_fields():
     assert {"handoff_markdown", "relevant", "summary_line"} <= set(DIGEST_RESPONSE_SCHEMA["required"])
-    assert CONSOLIDATION_RESPONSE_SCHEMA["properties"]["entries"]["items"]["properties"]["kind"]["enum"] == list("DTCPA")
+    assert CONSOLIDATION_RESPONSE_SCHEMA["properties"]["entries"]["items"]["properties"]["kind"]["enum"] == list(
+        "DTCPA"
+    )
 
 
 def test_generate_digest_single_call_json_config_and_redaction(monkeypatch):
@@ -159,6 +184,7 @@ def test_consolidate_memory_validates_and_returns_model(monkeypatch):
 
 def test_prompts_demand_verification_and_filter_candidates():
     from cross_session_mcp.agent import CONSOLIDATION_SYSTEM_PROMPT
+
     spec = i18n.handoff_spec()
     assert "without evidence of completion" in spec and "not verified" in spec
     assert "ROOT CAUSE" in spec
@@ -181,6 +207,7 @@ def test_language_rule_reaches_the_digest_request(monkeypatch):
 
 def test_enforce_last_instruction_replaces_or_inserts_the_quote():
     from cross_session_mcp.agent import enforce_last_instruction
+
     md = "### 6. Pending\n- None\n\n### 7. Immediate plan\n> something else\n1. a\n\n### 8. Skills"
     out = enforce_last_instruction(md, "commit is still pending")
     assert "> commit is still pending" in out and "something else" not in out
@@ -191,8 +218,11 @@ def test_enforce_last_instruction_replaces_or_inserts_the_quote():
 
 def test_invariants_normalize_titles_and_list_the_open_question():
     from cross_session_mcp.agent import closing_open_question, enforce_handoff_invariants
-    md = ("### 6. Pending and blockers — echo of the spec\n- None. Everything done.\n\n"
-          "### 7. Immediate plan\n> other\n1. a\n\n### 8. Suggested skills\n- x")
+
+    md = (
+        "### 6. Pending and blockers — echo of the spec\n- None. Everything done.\n\n"
+        "### 7. Immediate plan\n> other\n1. a\n\n### 8. Suggested skills\n- x"
+    )
     q = "Do you want me to make the commit?"
     out = enforce_handoff_invariants(md, "implement", q)
     assert "### 6. Pending and blockers\n" in out and "echo of the spec" not in out
@@ -204,9 +234,12 @@ def test_invariants_normalize_titles_and_list_the_open_question():
 
 def test_invariants_in_spanish_keep_the_inverted_question_mark(monkeypatch):
     from cross_session_mcp.agent import closing_open_question, enforce_handoff_invariants
+
     monkeypatch.setenv("CROSS_SESSION_LANGUAGE", "es")
-    md = ("### 6. Pendientes — eco\n- Ninguno. Todo cumplido.\n\n"
-          "### 7. Plan inmediato\n> otra\n1. a\n\n### 8. Skills sugeridas\n- x")
+    md = (
+        "### 6. Pendientes — eco\n- Ninguno. Todo cumplido.\n\n"
+        "### 7. Plan inmediato\n> otra\n1. a\n\n### 8. Skills sugeridas\n- x"
+    )
     q = "¿Quieres que haga el commit?"
     turns = [SessionTurn(role="user", content="hola"), SessionTurn(role="assistant", content=f"Hecho. {q}")]
     assert closing_open_question(turns) == q

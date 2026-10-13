@@ -38,10 +38,18 @@ def text_of(resp):
 
 def test_tools_metadata_schema():
     from cross_session_mcp.models import HARNESSES
+
     by_name = {t["name"]: t for t in TOOLS_METADATA}
-    assert list(by_name) == ["get_project_memory", "inject_session_context", "generate_session_handoff",
-                             "search_project_memory", "update_project_memory", "suggest_agent_rules",
-                             "list_cross_sessions", "get_session_turns"]
+    assert list(by_name) == [
+        "get_project_memory",
+        "inject_session_context",
+        "generate_session_handoff",
+        "search_project_memory",
+        "update_project_memory",
+        "suggest_agent_rules",
+        "list_cross_sessions",
+        "get_session_turns",
+    ]
     assert by_name["list_cross_sessions"]["inputSchema"]["properties"]["harness"]["enum"] == list(HARNESSES)
     assert by_name["update_project_memory"]["annotations"] == {"readOnlyHint": False, "openWorldHint": True}
     for name in ("get_project_memory", "suggest_agent_rules", "search_project_memory", "get_session_turns"):
@@ -62,12 +70,14 @@ def test_tools_metadata_schema():
 def test_tool_definitions_budget():
     """Fixed cost per session: definitions + instructions in compact JSON (what travels) ≤ 4,800 characters."""
     from cross_session_mcp.server import SERVER_INSTRUCTIONS
+
     size = len(json.dumps(TOOLS_METADATA, ensure_ascii=False, separators=(",", ":"))) + len(SERVER_INSTRUCTIONS)
     assert size <= 4800, size
 
 
 def test_cap_output_trims_with_narrowing_hint(monkeypatch):
     from cross_session_mcp.server import cap_output
+
     text = "\n".join("x" * 99 for _ in range(1200))  # 120,000 characters
     out = cap_output(text, "get_session_turns")
     assert len(out) <= 40_000 and "use query or lower max_turns" in out and "characters omitted" in out
@@ -77,17 +87,19 @@ def test_cap_output_trims_with_narrowing_hint(monkeypatch):
 
 
 def test_handshake_and_protocol_errors(stores):
-    by_id, responses = run_server([
-        rpc(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {}}),
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        rpc(2, "initialize", {"protocolVersion": "1999-01-01"}),
-        rpc(3, "ping"),
-        rpc(4, "tools/list"),
-        rpc(5, "weird/method"),
-        call(6, "does_not_exist", {}),
-        rpc(7, "tools/call", {}),
-        "this is not json",
-    ])
+    by_id, responses = run_server(
+        [
+            rpc(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {}}),
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            rpc(2, "initialize", {"protocolVersion": "1999-01-01"}),
+            rpc(3, "ping"),
+            rpc(4, "tools/list"),
+            rpc(5, "weird/method"),
+            call(6, "does_not_exist", {}),
+            rpc(7, "tools/call", {}),
+            "this is not json",
+        ]
+    )
     assert by_id[1]["result"]["protocolVersion"] == "2024-11-05"
     assert "instructions" in by_id[1]["result"]
     assert by_id[2]["result"]["protocolVersion"] == LATEST_PROTOCOL_VERSION
@@ -101,20 +113,22 @@ def test_handshake_and_protocol_errors(stores):
 
 
 def test_tools_end_to_end(stores):
-    by_id, _ = run_server([
-        call(1, "list_cross_sessions", {"workspace_path": "/home/test/projects/my-app"}),
-        call(2, "list_cross_sessions", {"harness": "codex"}),
-        call(3, "get_session_turns", {"session_id": "agy-sess"}),  # prefix, no harness
-        call(4, "get_session_turns", {"session_id": "claude-sess-1", "include_tools": False}),
-        call(5, "generate_session_handoff", {"session_id": "claude-sess-1"}),
-        call(6, "inject_session_context", {"session_id": "oc-sess-1", "harness": "opencode"}),
-        call(7, "get_session_turns", {"session_id": "missing"}),
-        call(8, "get_session_turns", {"session_id": "../../etc/passwd"}),
-        call(9, "list_cross_sessions", {"harness": "vscode"}),
-        call(10, "list_cross_sessions", {"limit": "lots"}),
-        call(11, "get_session_turns", {"session_id": "cursor-sess-1"}),
-        call(12, "generate_session_handoff", {"session_id": "copilot-sess", "harness": "copilot"}),
-    ])
+    by_id, _ = run_server(
+        [
+            call(1, "list_cross_sessions", {"workspace_path": "/home/test/projects/my-app"}),
+            call(2, "list_cross_sessions", {"harness": "codex"}),
+            call(3, "get_session_turns", {"session_id": "agy-sess"}),  # prefix, no harness
+            call(4, "get_session_turns", {"session_id": "claude-sess-1", "include_tools": False}),
+            call(5, "generate_session_handoff", {"session_id": "claude-sess-1"}),
+            call(6, "inject_session_context", {"session_id": "oc-sess-1", "harness": "opencode"}),
+            call(7, "get_session_turns", {"session_id": "missing"}),
+            call(8, "get_session_turns", {"session_id": "../../etc/passwd"}),
+            call(9, "list_cross_sessions", {"harness": "vscode"}),
+            call(10, "list_cross_sessions", {"limit": "lots"}),
+            call(11, "get_session_turns", {"session_id": "cursor-sess-1"}),
+            call(12, "generate_session_handoff", {"session_id": "copilot-sess", "harness": "copilot"}),
+        ]
+    )
     listing = text_of(by_id[1])
     for sid in ("claude-sess-1", "agy-sess-1", "oc-sess-1", "codex-sess-1", "cursor-sess-1", "copilot-sess-1"):
         assert sid in listing
@@ -143,16 +157,27 @@ def test_stdio_subprocess_keeps_stdout_clean(stores, tmp_path):
     even when a library prints to stdout."""
     sitecustom = tmp_path / "noisy"
     sitecustom.mkdir()
-    (sitecustom / "sitecustomize.py").write_text("import atexit\nprint('noise at startup')\natexit.register(lambda: print('noise at exit'))\n")
+    (sitecustom / "sitecustomize.py").write_text(
+        "import atexit\nprint('noise at startup')\natexit.register(lambda: print('noise at exit'))\n"
+    )
     env = dict(os.environ, PYTHONPATH=f"{sitecustom}{os.pathsep}{ROOT}")
-    payload = "\n".join(json.dumps(m) for m in [
-        rpc(1, "initialize", {"protocolVersion": LATEST_PROTOCOL_VERSION, "capabilities": {}}),
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        call(2, "list_cross_sessions", {}),
-    ]) + "\n"
+    payload = (
+        "\n".join(
+            json.dumps(m)
+            for m in [
+                rpc(1, "initialize", {"protocolVersion": LATEST_PROTOCOL_VERSION, "capabilities": {}}),
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                call(2, "list_cross_sessions", {}),
+            ]
+        )
+        + "\n"
+    )
     proc = subprocess.run(
         [sys.executable, "-c", "print('import noise'); from cross_session_mcp.server import main; main()"],
-        input=payload.encode(), capture_output=True, env=env, timeout=60,
+        input=payload.encode(),
+        capture_output=True,
+        env=env,
+        timeout=60,
     )
     lines = [line for line in proc.stdout.decode().splitlines() if line.strip()]
     # 'noise at startup' and 'import' come out before stdout is shielded; the rest must be JSON
@@ -165,10 +190,17 @@ def test_stdio_subprocess_keeps_stdout_clean(stores, tmp_path):
 
 
 def test_launcher_script(stores):
+    launcher_cmd = (
+        ["cmd.exe", "/c", str(ROOT / "bin" / "cross-session-mcp-server.cmd")]
+        if sys.platform == "win32"
+        else [str(ROOT / "bin" / "cross-session-mcp-server")]
+    )
     proc = subprocess.run(
-        [str(ROOT / "bin" / "cross-session-mcp-server")],
+        launcher_cmd,
         input=(json.dumps(rpc(1, "initialize", {"protocolVersion": LATEST_PROTOCOL_VERSION})) + "\n").encode(),
-        capture_output=True, timeout=60, cwd="/",
+        capture_output=True,
+        timeout=60,
+        cwd=str(ROOT) if sys.platform == "win32" else "/",
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout.decode().splitlines()[0])["result"]["serverInfo"]["name"] == "cross-session-mcp"
@@ -176,15 +208,17 @@ def test_launcher_script(stores):
 
 def test_project_memory_tools(stores):
     ws = "/home/test/projects/my-app"
-    by_id, _ = run_server([
-        call(1, "get_project_memory", {"workspace_path": ws}),
-        call(2, "update_project_memory", {"workspace_path": ws}),  # no Gemini key -> isError
-        call(3, "suggest_agent_rules", {"workspace_path": ws}),
-        call(4, "suggest_agent_rules", {"workspace_path": ws, "target": "other"}),
-        call(5, "update_project_memory", {}),
-        call(6, "update_project_memory", {"workspace_path": "relative"}),
-        call(7, "update_project_memory", {"workspace_path": ws, "sessions": "x"}),
-    ])
+    by_id, _ = run_server(
+        [
+            call(1, "get_project_memory", {"workspace_path": ws}),
+            call(2, "update_project_memory", {"workspace_path": ws}),  # no Gemini key -> isError
+            call(3, "suggest_agent_rules", {"workspace_path": ws}),
+            call(4, "suggest_agent_rules", {"workspace_path": ws, "target": "other"}),
+            call(5, "update_project_memory", {}),
+            call(6, "update_project_memory", {"workspace_path": "relative"}),
+            call(7, "update_project_memory", {"workspace_path": ws, "sessions": "x"}),
+        ]
+    )
     assert by_id[1]["result"]["isError"] is False and "No memory saved" in text_of(by_id[1])
     assert by_id[2]["result"]["isError"] is True and "credential" in text_of(by_id[2])
     assert by_id[3]["result"]["isError"] is False and "update_project_memory" in text_of(by_id[3])
@@ -193,18 +227,18 @@ def test_project_memory_tools(stores):
     assert by_id[7]["error"]["code"] == -32602
 
 
-
-
 def test_get_session_turns_defaults_query_and_limits(stores):
-    by_id, _ = run_server([
-        call(1, "get_session_turns", {"session_id": "oc-sess-1"}),
-        call(2, "get_session_turns", {"session_id": "oc-sess-1", "include_tools": True}),
-        call(3, "get_session_turns", {"session_id": "oc-sess-1", "query": "REFACTOR"}),
-        call(4, "get_session_turns", {"session_id": "oc-sess-1", "query": "nowhere to be found"}),
-        call(5, "get_session_turns", {"session_id": "oc-sess-1", "max_turns": 500}),
-        call(6, "list_cross_sessions", {"limit": 200}),
-        call(7, "get_session_turns", {"session_id": "oc-sess-1", "max_turns": 1}),
-    ])
+    by_id, _ = run_server(
+        [
+            call(1, "get_session_turns", {"session_id": "oc-sess-1"}),
+            call(2, "get_session_turns", {"session_id": "oc-sess-1", "include_tools": True}),
+            call(3, "get_session_turns", {"session_id": "oc-sess-1", "query": "REFACTOR"}),
+            call(4, "get_session_turns", {"session_id": "oc-sess-1", "query": "nowhere to be found"}),
+            call(5, "get_session_turns", {"session_id": "oc-sess-1", "max_turns": 500}),
+            call(6, "list_cross_sessions", {"limit": 200}),
+            call(7, "get_session_turns", {"session_id": "oc-sess-1", "max_turns": 1}),
+        ]
+    )
     assert "TOOL" not in text_of(by_id[1]) and "3 passed" not in text_of(by_id[1])  # no outputs by default
     assert "3 passed" in text_of(by_id[2])
     assert "Refactor utils.py" in text_of(by_id[3]) and "(±1)" in text_of(by_id[3])
@@ -216,16 +250,20 @@ def test_get_session_turns_defaults_query_and_limits(stores):
 
 def test_handoff_by_position_and_parameter_errors(stores):
     from cross_session_mcp.service import CrossSessionService
+
     ws = "/home/test/projects/my-app"
-    ordered = [s.session_id for s in CrossSessionService().list_sessions(workspace=ws, limit=50)
-               if s.workspace_path == ws]
-    by_id, _ = run_server([
-        call(1, "inject_session_context", {"workspace_path": ws}),
-        call(2, "generate_session_handoff", {"workspace_path": ws, "back": 2}),
-        call(3, "generate_session_handoff", {}),
-        call(4, "generate_session_handoff", {"workspace_path": ws, "back": 11}),
-        call(5, "generate_session_handoff", {"workspace_path": ws, "back": 10}),
-    ])
+    ordered = [
+        s.session_id for s in CrossSessionService().list_sessions(workspace=ws, limit=50) if s.workspace_path == ws
+    ]
+    by_id, _ = run_server(
+        [
+            call(1, "inject_session_context", {"workspace_path": ws}),
+            call(2, "generate_session_handoff", {"workspace_path": ws, "back": 2}),
+            call(3, "generate_session_handoff", {}),
+            call(4, "generate_session_handoff", {"workspace_path": ws, "back": 11}),
+            call(5, "generate_session_handoff", {"workspace_path": ws, "back": 10}),
+        ]
+    )
     assert len(ordered) >= 2
     assert f"`{ordered[0]}`" in text_of(by_id[1]) and "# Extended Handoff —" in text_of(by_id[1])
     assert ordered[1][:8] in text_of(by_id[2]) and ordered[0][:8] not in text_of(by_id[2])
@@ -235,17 +273,22 @@ def test_handoff_by_position_and_parameter_errors(stores):
 
 def test_search_project_memory_tool(stores):
     ws = "/home/test/projects/my-app"
-    by_id, _ = run_server([
-        call(1, "search_project_memory", {"topic": "docker", "workspace_path": ws}),
-        call(2, "search_project_memory", {"workspace_path": ws}),
-        call(3, "search_project_memory", {"topic": "docker", "workspace_path": ws, "limit": 99}),
-    ])
+    by_id, _ = run_server(
+        [
+            call(1, "search_project_memory", {"topic": "docker", "workspace_path": ws}),
+            call(2, "search_project_memory", {"workspace_path": ws}),
+            call(3, "search_project_memory", {"topic": "docker", "workspace_path": ws, "limit": 99}),
+        ]
+    )
     assert by_id[1]["result"]["isError"] is False and "No matches" in text_of(by_id[1])
     assert by_id[2]["error"]["code"] == -32602 and by_id[3]["error"]["code"] == -32602
 
 
 def test_instructions_order_memory_handoff_search_turns():
     from cross_session_mcp.server import SERVER_INSTRUCTIONS as text
-    order = [text.index(n) for n in ("get_project_memory", "inject_session_context", "search_project_memory",
-                                     "get_session_turns")]
+
+    order = [
+        text.index(n)
+        for n in ("get_project_memory", "inject_session_context", "search_project_memory", "get_session_turns")
+    ]
     assert order == sorted(order)

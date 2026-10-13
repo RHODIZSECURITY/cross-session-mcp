@@ -61,7 +61,9 @@ class AgySessionReader(BaseSessionReader):
         self.base_dirs = [d for d in (base_dirs or default_agy_dirs())]
 
     def _stores(self) -> list[tuple[Path, Path]]:
-        return [(d, d / "conversation_summaries.db") for d in self.base_dirs if (d / "conversation_summaries.db").exists()]
+        return [
+            (d, d / "conversation_summaries.db") for d in self.base_dirs if (d / "conversation_summaries.db").exists()
+        ]
 
     def can_read(self) -> bool:
         return bool(self._stores())
@@ -72,7 +74,15 @@ class AgySessionReader(BaseSessionReader):
             conn = self._connect_ro(db_path)
             try:
                 cols = self._columns(conn, "conversation_summaries")
-                wanted = ["conversation_id", "title", "preview", "step_count", "last_modified_time", "workspace_uris", "status"]
+                wanted = [
+                    "conversation_id",
+                    "title",
+                    "preview",
+                    "step_count",
+                    "last_modified_time",
+                    "workspace_uris",
+                    "status",
+                ]
                 optional = [c for c in ("parent_conversation_id", "killed") if c in cols]
                 select = ", ".join(c for c in wanted + optional if c in cols)
                 sql = f"SELECT {select} FROM conversation_summaries {where} ORDER BY last_modified_time DESC LIMIT ?"
@@ -113,7 +123,9 @@ class AgySessionReader(BaseSessionReader):
                 if row.get("parent_conversation_id"):
                     continue  # subagents: queried through their parent conversation
                 summary = self._row_to_summary(row)
-                if not is_excluded_workspace(summary.workspace_path) and workspace_matches(workspace_filter, summary.workspace_path):
+                if not is_excluded_workspace(summary.workspace_path) and workspace_matches(
+                    workspace_filter, summary.workspace_path
+                ):
                     sessions.append(summary)
         sessions.sort(key=lambda s: s.updated_at or "", reverse=True)
         return sessions[:limit]
@@ -140,11 +152,13 @@ class AgySessionReader(BaseSessionReader):
                 turns.append(SessionTurn(role="assistant", content=truncate(content, TEXT_TURN_LIMIT), timestamp=ts))
             for call in step.get("tool_calls") or []:
                 if isinstance(call, dict):
-                    turns.append(SessionTurn(
-                        role="tool",
-                        content=self._tool_call_text(call.get("name", "tool"), call.get("args")),
-                        timestamp=ts,
-                    ))
+                    turns.append(
+                        SessionTurn(
+                            role="tool",
+                            content=self._tool_call_text(call.get("name", "tool"), call.get("args")),
+                            timestamp=ts,
+                        )
+                    )
         elif stype in ("GENERIC", "TOOL_EXECUTION"):
             if content.strip():
                 turns.append(SessionTurn(role="tool", content=truncate(content, TOOL_TURN_LIMIT), timestamp=ts))

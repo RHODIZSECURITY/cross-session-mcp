@@ -103,7 +103,8 @@ class OpenCodeSessionReader(BaseSessionReader):
         rows = self._query("WHERE parent_id IS NULL", limit=fetch)
         sessions = [self._row_to_summary(r) for r in rows]
         return [
-            s for s in sessions
+            s
+            for s in sessions
             if not is_excluded_workspace(s.workspace_path) and workspace_matches(workspace_filter, s.workspace_path)
         ][:limit]
 

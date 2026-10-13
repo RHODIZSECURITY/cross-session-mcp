@@ -35,6 +35,7 @@ if _SDK_SITE and Path(_SDK_SITE).is_dir() and _SDK_SITE not in sys.path:
 
 try:
     from google.antigravity import Agent, LocalAgentConfig  # type: ignore
+
     HAS_ANTIGRAVITY_SDK = True
 except Exception:
     HAS_ANTIGRAVITY_SDK = False
@@ -235,8 +236,18 @@ DIGEST_RESPONSE_SCHEMA = {
         "agents_md_candidates": _arr(_obj(rule=_STR, scope={"type": "STRING", "enum": ["universal", "claude"]})),
         "suggested_skills": _arr(_STR),
     },
-    "required": ["handoff_markdown", "relevant", "relevance_reason", "summary_line", "decisions", "pitfalls",
-                 "commands", "pending", "agents_md_candidates", "suggested_skills"],
+    "required": [
+        "handoff_markdown",
+        "relevant",
+        "relevance_reason",
+        "summary_line",
+        "decisions",
+        "pitfalls",
+        "commands",
+        "pending",
+        "agents_md_candidates",
+        "suggested_skills",
+    ],
 }
 
 # -----------------------------------------------------------------------------
@@ -293,8 +304,14 @@ _DIGEST_LIST_FIELDS = {
     "commands": ("cmd", "purpose"),
     "agents_md_candidates": ("rule", "scope"),
 }
-_DIGEST_LIST_CAPS = {"decisions": 10, "pitfalls": 10, "commands": 10, "pending": 10,
-                     "agents_md_candidates": 8, "suggested_skills": 6}
+_DIGEST_LIST_CAPS = {
+    "decisions": 10,
+    "pitfalls": 10,
+    "commands": 10,
+    "pending": 10,
+    "agents_md_candidates": 8,
+    "suggested_skills": 6,
+}
 
 
 def _system(prompt: str) -> str:
@@ -334,10 +351,11 @@ def validate_digest(obj: Any) -> dict[str, Any] | None:
         for item in obj.get(name) or []:
             if isinstance(item, dict) and isinstance(item.get(keys[0]), str) and item[keys[0]].strip():
                 items.append({k: clean_text(str(item.get(k) or "")).strip() for k in keys})
-        digest[name] = items[:_DIGEST_LIST_CAPS[name]]
+        digest[name] = items[: _DIGEST_LIST_CAPS[name]]
     for name in ("pending", "suggested_skills"):
-        digest[name] = [clean_text(x).strip() for x in (obj.get(name) or [])
-                        if isinstance(x, str) and x.strip()][:_DIGEST_LIST_CAPS[name]]
+        digest[name] = [clean_text(x).strip() for x in (obj.get(name) or []) if isinstance(x, str) and x.strip()][
+            : _DIGEST_LIST_CAPS[name]
+        ]
     return digest
 
 
@@ -374,19 +392,21 @@ CONSOLIDATION_RESPONSE_SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "state": _arr(_STR),
-        "entries": _arr({
-            "type": "OBJECT",
-            "properties": {
-                "id": {"type": "STRING", "nullable": True},
-                "kind": {"type": "STRING", "enum": ["D", "T", "C", "P", "A"]},
-                "text": _STR,
-                "why": _STR,
-                "scope": {"type": "STRING", "enum": ["universal", "claude"]},
-                "evidence_sessions": _arr(_STR),
-                "supersedes": {"type": "STRING", "nullable": True},
-            },
-            "required": ["kind", "text", "evidence_sessions"],
-        }),
+        "entries": _arr(
+            {
+                "type": "OBJECT",
+                "properties": {
+                    "id": {"type": "STRING", "nullable": True},
+                    "kind": {"type": "STRING", "enum": ["D", "T", "C", "P", "A"]},
+                    "text": _STR,
+                    "why": _STR,
+                    "scope": {"type": "STRING", "enum": ["universal", "claude"]},
+                    "evidence_sessions": _arr(_STR),
+                    "supersedes": {"type": "STRING", "nullable": True},
+                },
+                "required": ["kind", "text", "evidence_sessions"],
+            }
+        ),
         "archive_ids": _arr(_STR),
     },
     "required": ["state", "entries"],
@@ -426,8 +446,10 @@ def build_consolidation_prompt(
     digest_blocks = []
     for d in digests:
         data = d["digest"]
-        block = [f"### ref `{d['ref']}` · {d['harness']} · {(d.get('updated_at') or '')[:10]}",
-                 f"Summary: {data.get('summary_line', '')}"]
+        block = [
+            f"### ref `{d['ref']}` · {d['harness']} · {(d.get('updated_at') or '')[:10]}",
+            f"Summary: {data.get('summary_line', '')}",
+        ]
         for label, key, fmt in (
             ("Decisions", "decisions", lambda i: f"{i['text']} (why: {i['why']})"),
             ("Pitfalls", "pitfalls", lambda i: f"{i['symptom']} → {i['cause']} → {i['fix']}"),
@@ -489,7 +511,9 @@ _OPEN_QUESTION_ES = re.compile(r"([^\n.!?:]*¿[^?\n]*\?)\s*$")
 _OPEN_QUESTION = re.compile(r"([^\n.!?:]+\?)\s*$")
 _NO_PENDING = re.compile(
     r"^\s*-\s*(none|nothing (pending|left)|no (pending|blockers|open items)|"
-    r"ninguno|ninguna|no (quedan|hay|existen)|sin (pendientes|bloqueos))", re.I)
+    r"ninguno|ninguna|no (quedan|hay|existen)|sin (pendientes|bloqueos))",
+    re.I,
+)
 
 
 def closing_open_question(turns: list[SessionTurn]) -> str:
@@ -505,19 +529,21 @@ def enforce_handoff_invariants(handoff: str, last_user: str = "", open_question:
     """Invariants the LLM must not decide: canonical titles, the quote of the real last instruction and the
     closing open question listed as pending (removing a contradictory "None")."""
     sections = i18n.handoff_sections()
-    lines = [sections[int(m.group(1)) - 1] if (m := re.match(r"### ([1-8])\.", line)) else line
-             for line in handoff.split("\n")]
+    lines = [
+        sections[int(m.group(1)) - 1] if (m := re.match(r"### ([1-8])\.", line)) else line
+        for line in handoff.split("\n")
+    ]
     out = enforce_last_instruction("\n".join(lines), last_user)
     if open_question and open_question not in out:
         lines = out.split("\n")
         start = next((i for i, line in enumerate(lines) if line.startswith("### 6.")), None)
         if start is not None:
             end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("### ")), len(lines))
-            body = [line for line in lines[start + 1:end] if not _NO_PENDING.match(line)]
+            body = [line for line in lines[start + 1 : end] if not _NO_PENDING.match(line)]
             while body and not body[-1].strip():
                 body.pop()
             body.append("- " + i18n.t("open_question", question=open_question))
-            lines[start + 1:end] = body + [""]
+            lines[start + 1 : end] = body + [""]
             out = "\n".join(lines)
     return out
 
@@ -536,9 +562,7 @@ def build_transcript(turns: list[SessionTurn], budget_chars: int | None = None) 
     if not turns:
         return "", 0
 
-    formatted = [
-        _format_turn(t, 3000 if t.role in ("user", "assistant") else 800) for t in turns
-    ]
+    formatted = [_format_turn(t, 3000 if t.role in ("user", "assistant") else 800) for t in turns]
     total_len = sum(len(f) + 2 for f in formatted)
     if total_len <= budget:
         return "\n\n".join(formatted), len(turns)
@@ -604,7 +628,7 @@ def get_gemini_api_key() -> str | None:
         for line in key_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line.startswith("export "):
-                line = line[len("export "):].strip()
+                line = line[len("export ") :].strip()
             for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
                 if line.startswith(var + "="):
                     value = line.split("=", 1)[1].strip().strip("'\"")
@@ -718,9 +742,7 @@ class GeminiHandoffAgent:
 
     def _scrub_cca_system_text(self, text: str) -> str:
         cleaned = re.sub(r"(?i)^x-anthropic-billing-header:[^\n]*\n?", "", text)
-        return "\n\n".join(
-            part for part in cleaned.split("\n\n") if part != self._CCA_REJECTED_PARAGRAPH
-        )
+        return "\n\n".join(part for part in cleaned.split("\n\n") if part != self._CCA_REJECTED_PARAGRAPH)
 
     def _scrub_cca_payload(self, payload: dict) -> dict:
         scrubbed = dict(payload)
@@ -786,7 +808,10 @@ class GeminiHandoffAgent:
     def _post_cca(self, url: str, data_bytes: bytes, token: str, refresh_on_401: bool) -> dict[str, Any]:
         """POSTs a CCA envelope and returns decoded JSON. On 401, refreshes once and retries."""
         req = urllib.request.Request(
-            url, data=data_bytes, headers=antigravity_mod.cca_headers(token), method="POST",
+            url,
+            data=data_bytes,
+            headers=antigravity_mod.cca_headers(token),
+            method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
@@ -797,8 +822,10 @@ class GeminiHandoffAgent:
                 retry_token = self.cca.token(self.timeout)
                 if retry_token:
                     retry = urllib.request.Request(
-                        url, data=data_bytes,
-                        headers=antigravity_mod.cca_headers(retry_token), method="POST",
+                        url,
+                        data=data_bytes,
+                        headers=antigravity_mod.cca_headers(retry_token),
+                        method="POST",
                     )
                     with urllib.request.urlopen(retry, timeout=self.timeout) as response:
                         return json.loads(response.read().decode("utf-8"))
@@ -814,15 +841,18 @@ class GeminiHandoffAgent:
         messages = []
         instruction = payload.get("systemInstruction") or {}
         sys_parts = instruction.get("parts") if isinstance(instruction, dict) else None
-        sys_text = " ".join(
-            part.get("text", "") for part in sys_parts
-            if isinstance(part, dict) and part.get("text", "").strip()
-        ) if isinstance(sys_parts, list) else ""
+        sys_text = (
+            " ".join(
+                part.get("text", "") for part in sys_parts if isinstance(part, dict) and part.get("text", "").strip()
+            )
+            if isinstance(sys_parts, list)
+            else ""
+        )
         if sys_text.strip():
             messages.append({"role": "system", "content": sys_text})
         user_texts = []
         for content in payload.get("contents") or []:
-            for part in (content.get("parts") or []):
+            for part in content.get("parts") or []:
                 if isinstance(part, dict) and part.get("text", "").strip():
                     user_texts.append(part["text"])
         messages.append({"role": "user", "content": "\n".join(user_texts)})
@@ -843,8 +873,10 @@ class GeminiHandoffAgent:
         if key:
             headers["Authorization"] = f"Bearer {key}"
         req = urllib.request.Request(
-            f"{base}/chat/completions", data=json.dumps(body).encode("utf-8"),
-            headers=headers, method="POST",
+            f"{base}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
@@ -998,7 +1030,9 @@ class GeminiHandoffAgent:
             total_turns=len(detail.turns),
             included_turns=included,
             handoff_spec=i18n.handoff_spec(),
-            last_user=last_user_instruction(detail.turns) or redact_pii(redact(detail.summary.last_prompt or "")) or "(none)",
+            last_user=last_user_instruction(detail.turns)
+            or redact_pii(redact(detail.summary.last_prompt or ""))
+            or "(none)",
         )
 
     def generate_digest(self, detail: SessionDetail) -> dict[str, Any] | None:
@@ -1015,7 +1049,8 @@ class GeminiHandoffAgent:
             return None
         digest["model_used"] = model
         digest["handoff_markdown"] = enforce_handoff_invariants(
-            digest.get("handoff_markdown", ""), last_user_instruction(detail.turns), closing_open_question(detail.turns))
+            digest.get("handoff_markdown", ""), last_user_instruction(detail.turns), closing_open_question(detail.turns)
+        )
         return digest
 
     def generate_focused_handoff(self, detail: SessionDetail, focus: str) -> tuple[str, str] | None:
@@ -1046,11 +1081,11 @@ class GeminiHandoffAgent:
         """Consolidation with ONE LLM call. None without a credential or when every model fails."""
         if not self.available:
             return None
-        prompt = build_consolidation_prompt(
-            entries, digests, ref_by_key, workspace, window_size, now_utc_iso()[:10]
-        )
+        prompt = build_consolidation_prompt(entries, digests, ref_by_key, workspace, window_size, now_utc_iso()[:10])
         result, model = self._generate_json(
-            _system(CONSOLIDATION_SYSTEM_PROMPT), redact_pii(redact(prompt)), CONSOLIDATION_RESPONSE_SCHEMA,
+            _system(CONSOLIDATION_SYSTEM_PROMPT),
+            redact_pii(redact(prompt)),
+            CONSOLIDATION_RESPONSE_SCHEMA,
             validate_consolidation,
         )
         if result is None:
@@ -1086,34 +1121,34 @@ def build_offline_handoff(detail: SessionDetail, focus_area: str = "", reason: s
     return f"""{notice}
 
 {sections[0]}
-- {t('offline_title')}: **{title}**{focus}
-- {t('offline_first')}:
+- {t("offline_title")}: **{title}**{focus}
+- {t("offline_first")}:
 {bullets(prompts[:1], 800)}
 
 {sections[1]}
-- {t('offline_status')}: `{s.status}` · {t('offline_updated')}: {s.updated_at or t('offline_unknown')} · {t('offline_turns')}: {len(detail.turns)}
-- {t('offline_last_assistant')}:
-> {truncate(clean_text(last_assistant), 600).replace(chr(10), chr(10) + '> ')}
+- {t("offline_status")}: `{s.status}` · {t("offline_updated")}: {s.updated_at or t("offline_unknown")} · {t("offline_turns")}: {len(detail.turns)}
+- {t("offline_last_assistant")}:
+> {truncate(clean_text(last_assistant), 600).replace(chr(10), chr(10) + "> ")}
 
 {sections[2]}
-- {t('offline_recent')}:
+- {t("offline_recent")}:
 {bullets(prompts[-5:], 400)}
 
 {sections[3]}
-- {t('offline_tools')}:
+- {t("offline_tools")}:
 {bullets(tools[-8:], 200)}
 
 {sections[4]}
-- {t('offline_no_llm')}
+- {t("offline_no_llm")}
 
 {sections[5]}
-- {t('offline_review')}
+- {t("offline_review")}
 
 {sections[6]}
-{quote}1. {t('offline_step1', workspace=s.workspace_path)}
-2. {t('offline_step2')}
-3. {t('offline_step3', title=title)}
+{quote}1. {t("offline_step1", workspace=s.workspace_path)}
+2. {t("offline_step2")}
+3. {t("offline_step3", title=title)}
 
 {sections[7]}
-- {t('offline_no_llm')}
+- {t("offline_no_llm")}
 """

@@ -9,7 +9,7 @@
 
 An MCP server and CLI that indexes, summarizes and hands off development sessions across **Claude Code**,
 **Google Antigravity (`agy` and the IDE)**, **OpenCode**, **OpenAI Codex**, **Cursor** and **GitHub Copilot Chat
-(VS Code)**. It runs on Linux and macOS (Windows is not supported) with the Python standard library alone (3.10+),
+(VS Code)**. It runs on Linux, macOS and Windows with the Python standard library alone (3.10+),
 and has no dependencies to install.
 
 > "Resume yesterday's session" -> your agent gets an 8-section Extended Handoff of the last session in this project,
@@ -225,6 +225,11 @@ Nothing to install. Every harness can launch the repository script directly:
 /path/to/cross-session-mcp/bin/cross-session-mcp-server
 ```
 
+On Windows, use the native CMD launchers:
+```
+C:\path\to\cross-session-mcp\bin\cross-session-mcp-server.cmd
+```
+
 > If you prefer it on your `PATH`: `uv tool install -e .` (or `pipx install -e .`) installs `cross-session-mcp` and
 > `cross-session-mcp-server`. On Ubuntu 24.04, do not `pip install` into the system Python (PEP 668).
 
@@ -246,6 +251,19 @@ command = "/path/to/cross-session-mcp/bin/cross-session-mcp-server"
 args = []
 startup_timeout_sec = 20
 tool_timeout_sec = 180
+```
+
+On Windows (with optional OpenCodex proxy env vars):
+```toml
+[mcp_servers.cross_sessions]
+command = "C:\\Python314\\python.exe"
+args = ["-m", "cross_session_mcp.server"]
+startup_timeout_sec = 20
+tool_timeout_sec = 180
+
+[mcp_servers.cross_sessions.env]
+PYTHONPATH = 'C:\\path\\to\\cross-session-mcp'
+PYTHONUTF8 = "1"
 ```
 
 ### OpenCode — `~/.config/opencode/opencode.json`
@@ -383,6 +401,13 @@ Point synthesis at any OpenAI-compatible endpoint instead of Google directly:
 ```bash
 export CROSS_SESSION_OPENAI_BASE="http://127.0.0.1:10100/v1"
 export CROSS_SESSION_MODELS="google-antigravity/gemini-3.8-flash"
+```
+
+For OpenCodex hubs running locally (e.g. at `http://localhost:10102/v1` with bearer token):
+```bash
+export CROSS_SESSION_OPENAI_BASE="http://localhost:10102/v1"
+export CROSS_SESSION_OPENAI_KEY="ocx_data_..."
+export CROSS_SESSION_MODELS="google-antigravity/gemini-3.8-flash,google/gemini-3.5-flash-lite"
 ```
 
 Model names pass through untouched. Add `CROSS_SESSION_OPENAI_KEY` only if the

@@ -26,8 +26,9 @@ def make_detail(n_turns=6):
         turns.append(SessionTurn(role="assistant", content=f"step {i}"))
         turns.append(SessionTurn(role="tool", content=f"→ bash: command {i}"))
     turns.append(SessionTurn(role="user", content="Last instruction"))
-    summary = SessionSummary(session_id="s1", harness="claude", workspace_path="/p", title="T",
-                             updated_at="2026-09-01T10:00:00.000000+00:00")
+    summary = SessionSummary(
+        session_id="s1", harness="claude", workspace_path="/p", title="T", updated_at="2026-09-01T10:00:00.000000+00:00"
+    )
     return SessionDetail(summary=summary, turns=turns)
 
 
@@ -100,9 +101,17 @@ def test_offline_handoff_in_spanish(monkeypatch):
     assert "la API de Gemini falló" in failed and "GEMINI_API_KEY" not in failed
 
 
-@pytest.mark.parametrize("value,expected", [
-    (None, "en"), ("es", "es"), ("ES", "es"), ("es_ES.UTF-8", "es"), ("fr", "en"), ("", "en"),
-])
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (None, "en"),
+        ("es", "es"),
+        ("ES", "es"),
+        ("es_ES.UTF-8", "es"),
+        ("fr", "en"),
+        ("", "en"),
+    ],
+)
 def test_language_selection_falls_back_to_english(monkeypatch, value, expected):
     if value is not None:
         monkeypatch.setenv("CROSS_SESSION_LANGUAGE", value)
@@ -124,7 +133,9 @@ def test_focused_handoff_key_in_header_and_fallback_between_models(monkeypatch):
         calls.append(req)
         if "model-a" in req.full_url:
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b"{}"))
-        body = {"candidates": [{"content": {"parts": [{"text": f"### 1. Handoff with {SECRET}"}]}, "finishReason": "STOP"}]}
+        body = {
+            "candidates": [{"content": {"parts": [{"text": f"### 1. Handoff with {SECRET}"}]}, "finishReason": "STOP"}]
+        }
         return FakeResponse(json.dumps(body).encode())
 
     monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)

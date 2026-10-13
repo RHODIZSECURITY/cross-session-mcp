@@ -28,10 +28,19 @@ class FakeAgent:
         self.digest_calls.append(sid)
         if sid in self.fail_digest_for:
             return None
-        return {"handoff_markdown": f"# handoff {sid}", "relevant": True, "relevance_reason": "x",
-                "summary_line": f"summary of {sid}", "decisions": [{"text": f"decision of {sid}", "why": "because"}],
-                "pitfalls": [], "commands": [], "pending": [], "agents_md_candidates": [], "suggested_skills": [],
-                "model_used": "fake-model"}
+        return {
+            "handoff_markdown": f"# handoff {sid}",
+            "relevant": True,
+            "relevance_reason": "x",
+            "summary_line": f"summary of {sid}",
+            "decisions": [{"text": f"decision of {sid}", "why": "because"}],
+            "pitfalls": [],
+            "commands": [],
+            "pending": [],
+            "agents_md_candidates": [],
+            "suggested_skills": [],
+            "model_used": "fake-model",
+        }
 
     def consolidate_memory(self, entries, digests, ref_by_key, workspace, window_size):
         self.consolidation_calls += 1
@@ -39,10 +48,25 @@ class FakeAgent:
             self.on_consolidate()
         if self.fail_consolidation:
             return None
-        out = [{"id": None, "kind": "D", "text": f"unique decision of {d['ref']}", "why": "because",
-                "evidence_sessions": [d["ref"]]} for d in digests]
-        out.append({"id": None, "kind": "A", "text": "Answer in formal English", "scope": "universal",
-                    "evidence_sessions": [d["ref"] for d in digests]})
+        out = [
+            {
+                "id": None,
+                "kind": "D",
+                "text": f"unique decision of {d['ref']}",
+                "why": "because",
+                "evidence_sessions": [d["ref"]],
+            }
+            for d in digests
+        ]
+        out.append(
+            {
+                "id": None,
+                "kind": "A",
+                "text": "Answer in formal English",
+                "scope": "universal",
+                "evidence_sessions": [d["ref"] for d in digests],
+            }
+        )
         out += self.extra_entries
         for e in entries:  # keeps the existing ones (the LLM returns them with their ID)
             out.append({"id": e["id"], "kind": e["kind"], "text": e["text"], "evidence_sessions": []})
@@ -64,6 +88,7 @@ def svc(stores, tmp_path):
 
 def bump(svc, session_id, when="2099-01-01T00:00:00.000000+00:00"):
     import sqlite3
+
     conn = sqlite3.connect(svc.db.db_path)
     conn.execute("UPDATE cross_sessions SET updated_at = ? WHERE session_id = ?", (when, session_id))
     conn.commit()
@@ -93,9 +118,13 @@ def test_first_incremental_and_unchanged_updates(svc):
 
 def test_window_limit_and_exact_workspace(svc):
     import sqlite3
+
     conn = sqlite3.connect(svc.db.db_path)
-    conn.execute("INSERT INTO cross_sessions (session_id, harness, workspace_path, title, updated_at) "
-                 "VALUES ('sub-1','claude',?, 't', '2099-01-01T00:00:00.000000+00:00')", (WORKSPACE + "/sub",))
+    conn.execute(
+        "INSERT INTO cross_sessions (session_id, harness, workspace_path, title, updated_at) "
+        "VALUES ('sub-1','claude',?, 't', '2099-01-01T00:00:00.000000+00:00')",
+        (WORKSPACE + "/sub",),
+    )
     conn.commit()
     conn.close()
     r = svc.update_project_memory(WORKSPACE, sessions=3)
@@ -145,7 +174,9 @@ def test_concurrent_update_retries_once_then_fails(svc):
 
     def interfere():  # another instance saves a version while we consolidate
         cur = other.get_memory(WORKSPACE)
-        other.save_memory_version(WORKSPACE, cur["version"], "# other", cur["window"], [], "other", other.get_entries(WORKSPACE))
+        other.save_memory_version(
+            WORKSPACE, cur["version"], "# other", cur["window"], [], "other", other.get_entries(WORKSPACE)
+        )
 
     calls = {"n": 0}
 
@@ -165,7 +196,9 @@ def test_concurrent_update_retries_once_then_fails(svc):
 
 
 def test_get_project_memory_warns_without_calling_llm(svc):
-    assert "No memory saved" in svc.get_project_memory(WORKSPACE) and "update_project_memory" in svc.get_project_memory(WORKSPACE)
+    assert "No memory saved" in svc.get_project_memory(WORKSPACE) and "update_project_memory" in svc.get_project_memory(
+        WORKSPACE
+    )
     svc.update_project_memory(WORKSPACE)
     svc.agent.digest_calls.clear()
     svc.agent.consolidation_calls = 0
@@ -188,7 +221,9 @@ def test_pin_unpin_forget_create_versions_and_forget_sticks(svc):
     assert f"**[{target['id']}]**" not in svc.get_project_memory(WORKSPACE)
     assert [v["version"] for v in svc.db.list_memory_versions(WORKSPACE)] == [4, 3, 2, 1]
 
-    svc.agent.extra_entries = [{"id": None, "kind": "D", "text": target["text"], "evidence_sessions": ["claude:claude-se"]}]
+    svc.agent.extra_entries = [
+        {"id": None, "kind": "D", "text": target["text"], "evidence_sessions": ["claude:claude-se"]}
+    ]
     bump(svc, "codex-sess-1")
     svc.update_project_memory(WORKSPACE)
     texts = [e["text"] for e in svc.db.get_entries(WORKSPACE) if e["status"] != "forgotten"]
@@ -211,19 +246,29 @@ def test_history_lists_versions_and_archived(svc):
 def test_export_is_explicit_mode_600_and_same_content(svc, tmp_path):
     target = tmp_path / "out" / "MEMORY.md"
     r = svc.update_project_memory(WORKSPACE, export_path=str(target))
-    assert r.exported_to == str(target) and stat.S_IMODE(os.stat(target).st_mode) == 0o600
+    assert r.exported_to == str(target)
+    if os.name != "nt":
+        assert stat.S_IMODE(os.stat(target).st_mode) == 0o600
     assert target.read_text() == svc.get_project_memory(WORKSPACE)
     other = tmp_path / "again.md"
     target.chmod(0o644)
     svc.export_project_memory(WORKSPACE, str(other))
-    assert other.read_text() == target.read_text() and stat.S_IMODE(os.stat(other).st_mode) == 0o600
+    assert other.read_text() == target.read_text()
+    if os.name != "nt":
+        assert stat.S_IMODE(os.stat(other).st_mode) == 0o600
     # nothing is written without an explicit path
     assert not (tmp_path / "MEMORY.md").exists()
 
 
 def test_redaction_of_llm_entries_is_persisted(svc):
-    svc.agent.extra_entries = [{"id": None, "kind": "D", "text": "token ghp_" + "a" * 36 + " mail a@b.com",
-                                "evidence_sessions": ["claude:claude-se"]}]
+    svc.agent.extra_entries = [
+        {
+            "id": None,
+            "kind": "D",
+            "text": "token ghp_" + "a" * 36 + " mail a@b.com",
+            "evidence_sessions": ["claude:claude-se"],
+        }
+    ]
     svc.update_project_memory(WORKSPACE)
     stored = " ".join(e["text"] for e in svc.db.get_entries(WORKSPACE))
     assert "ghp_" not in stored and "a@b.com" not in stored and "[REDACTED]" in stored
@@ -236,17 +281,47 @@ def rules_ws(tmp_path):
     db = CrossSessionDB(tmp_path / "r.db")
     ws = tmp_path / "proj"
     ws.mkdir()
-    window = [{"key": f"claude:s{i}", "harness": "claude", "session_id": f"s{i}", "updated_at": f"2026-09-0{i + 1}",
-               "relevant": True, "summary_line": "x"} for i in range(8)]
+    window = [
+        {
+            "key": f"claude:s{i}",
+            "harness": "claude",
+            "session_id": f"s{i}",
+            "updated_at": f"2026-09-0{i + 1}",
+            "relevant": True,
+            "summary_line": "x",
+        }
+        for i in range(8)
+    ]
     keys = [w["key"] for w in window]
 
     def entry(eid, text, scope, n):
-        return dict(id=eid, kind=eid[0], text=text, why="", scope=scope, evidence=keys[:n], status="active",
-                    pinned=False, text_hash=memory.text_hash(text), first_seen="x", last_seen="x", updated_at="x")
+        return dict(
+            id=eid,
+            kind=eid[0],
+            text=text,
+            why="",
+            scope=scope,
+            evidence=keys[:n],
+            status="active",
+            pinned=False,
+            text_hash=memory.text_hash(text),
+            first_seen="x",
+            last_seen="x",
+            updated_at="x",
+        )
 
-    db.save_memory_version(str(ws), 0, "# M", window, [], "m",
-                           [entry("A1", "Always answer in formal English", "universal", 5),
-                            entry("A2", "Run the handoff skill when closing", "claude", 3)])
+    db.save_memory_version(
+        str(ws),
+        0,
+        "# M",
+        window,
+        [],
+        "m",
+        [
+            entry("A1", "Always answer in formal English", "universal", 5),
+            entry("A2", "Run the handoff skill when closing", "claude", 3),
+        ],
+    )
     return CrossSessionService(db=db, agent=FakeAgent()), ws
 
 

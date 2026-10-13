@@ -26,7 +26,7 @@ from cross_session_mcp.agent import GeminiHandoffAgent
 from cross_session_mcp.db import CrossSessionDB
 from cross_session_mcp.models import HARNESSES, SessionSummary
 from cross_session_mcp.service import CrossSessionService, SessionError, select_turns
-from cross_session_mcp.utils import logger, redact, setup_logging, truncate
+from cross_session_mcp.utils import is_absolute_workspace, logger, redact, setup_logging, truncate
 
 SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
@@ -66,42 +66,87 @@ def _tool(name: str, description: str, properties: dict[str, Any], required: lis
 
 
 TOOLS_METADATA: list[dict[str, Any]] = [
-    _tool("get_project_memory", "Project MEMORY.md, no LLM. Use it first.", {"workspace_path": _WS},
-          ["workspace_path"], _RO),
-    _tool("inject_session_context", "Extended Handoff ready to resume a previous session.",
-          _HANDOFF_SCHEMA["properties"], [], _RO_LLM),
-    _tool("generate_session_handoff", "Extended Handoff of a session (no resume wrapper).",
-          _HANDOFF_SCHEMA["properties"], [], _RO_LLM),
-    _tool("search_project_memory", "Searches a topic in active and archived memory and handoffs.", {
-        "topic": {"type": "string"},
-        "workspace_path": _WS,
-        "all_projects": _BOOL,
-        "synthesize": {"type": "boolean", "description": "Patterns via LLM; not saved."},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-    }, ["topic", "workspace_path"], _RO_LLM),
-    _tool("update_project_memory", "Forces memory consolidation (LLM).", {
-        "workspace_path": _WS,
-        "sessions": {"type": "integer", "minimum": 1, "maximum": 20},
-        "force_refresh": _BOOL,
-        "export_path": {"type": "string", "description": "Also writes the file (600)."},
-    }, ["workspace_path"], {"readOnlyHint": False, "openWorldHint": True}),
-    _tool("suggest_agent_rules", "Memory rules for AGENTS.md or CLAUDE.md, no LLM.", {
-        "workspace_path": _WS,
-        "target": {"type": "string", "enum": ["agents", "claude", "both"]},
-    }, ["workspace_path"], _RO),
-    _tool("list_cross_sessions", "Recent sessions from every harness.", {
-        "workspace_path": {"type": "string", "description": "Path (subdirectories included) or substring."},
-        "harness": _HARNESS,
-        "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-        "refresh": _BOOL,
-    }, [], _RO),
-    _tool("get_session_turns", "Verbatim turns; only for a specific detail.", {
-        "session_id": {"type": "string"},
-        "harness": _HARNESS,
-        "query": {"type": "string", "description": "Only turns with this text (±1)."},
-        "max_turns": {"type": "integer", "minimum": 1, "maximum": 50},
-        "include_tools": _BOOL,
-    }, ["session_id"], _RO),
+    _tool(
+        "get_project_memory",
+        "Project MEMORY.md, no LLM. Use it first.",
+        {"workspace_path": _WS},
+        ["workspace_path"],
+        _RO,
+    ),
+    _tool(
+        "inject_session_context",
+        "Extended Handoff ready to resume a previous session.",
+        _HANDOFF_SCHEMA["properties"],
+        [],
+        _RO_LLM,
+    ),
+    _tool(
+        "generate_session_handoff",
+        "Extended Handoff of a session (no resume wrapper).",
+        _HANDOFF_SCHEMA["properties"],
+        [],
+        _RO_LLM,
+    ),
+    _tool(
+        "search_project_memory",
+        "Searches a topic in active and archived memory and handoffs.",
+        {
+            "topic": {"type": "string"},
+            "workspace_path": _WS,
+            "all_projects": _BOOL,
+            "synthesize": {"type": "boolean", "description": "Patterns via LLM; not saved."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        },
+        ["topic", "workspace_path"],
+        _RO_LLM,
+    ),
+    _tool(
+        "update_project_memory",
+        "Forces memory consolidation (LLM).",
+        {
+            "workspace_path": _WS,
+            "sessions": {"type": "integer", "minimum": 1, "maximum": 20},
+            "force_refresh": _BOOL,
+            "export_path": {"type": "string", "description": "Also writes the file (600)."},
+        },
+        ["workspace_path"],
+        {"readOnlyHint": False, "openWorldHint": True},
+    ),
+    _tool(
+        "suggest_agent_rules",
+        "Memory rules for AGENTS.md or CLAUDE.md, no LLM.",
+        {
+            "workspace_path": _WS,
+            "target": {"type": "string", "enum": ["agents", "claude", "both"]},
+        },
+        ["workspace_path"],
+        _RO,
+    ),
+    _tool(
+        "list_cross_sessions",
+        "Recent sessions from every harness.",
+        {
+            "workspace_path": {"type": "string", "description": "Path (subdirectories included) or substring."},
+            "harness": _HARNESS,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+            "refresh": _BOOL,
+        },
+        [],
+        _RO,
+    ),
+    _tool(
+        "get_session_turns",
+        "Verbatim turns; only for a specific detail.",
+        {
+            "session_id": {"type": "string"},
+            "harness": _HARNESS,
+            "query": {"type": "string", "description": "Only turns with this text (±1)."},
+            "max_turns": {"type": "integer", "minimum": 1, "maximum": 50},
+            "include_tools": _BOOL,
+        },
+        ["session_id"],
+        _RO,
+    ),
 ]
 _TOOL_NAMES = {t["name"] for t in TOOLS_METADATA}
 
@@ -222,8 +267,9 @@ class MCPServer:
         include_tools = _arg_bool(args, "include_tools")
         max_turns = _arg_int(args, "max_turns", 10, 1, 50)
         query = _arg_str(args, "query")
-        detail = self.service.get_detail(_arg_str(args, "session_id", required=True), _arg_str(args, "harness"),
-                                         max_turns=None)
+        detail = self.service.get_detail(
+            _arg_str(args, "session_id", required=True), _arg_str(args, "harness"), max_turns=None
+        )
         turns, omitted = select_turns(detail.turns, query, include_tools, max_turns)
         s = detail.summary
         if query and not turns:
@@ -254,17 +300,19 @@ class MCPServer:
     def _tool_generate_session_handoff(self, args: dict[str, Any]) -> str:
         h = self._handoff(args)
         origin = "local bank" if h.from_cache else h.model_used
-        return f"{h.markdown_handoff}\n\n---\n*Source: {origin} · generated {h.generated_at[:16].replace('T', ' ')} UTC*"
+        return (
+            f"{h.markdown_handoff}\n\n---\n*Source: {origin} · generated {h.generated_at[:16].replace('T', ' ')} UTC*"
+        )
 
     def _tool_inject_session_context(self, args: dict[str, Any]) -> str:
         h = self._handoff(args)
-        return f"""# {i18n.t('resume_title')} ({h.harness.upper()} · `{h.session_id}`)
-{i18n.t('resume_workdir')}: `{h.workspace_path}`
+        return f"""# {i18n.t("resume_title")} ({h.harness.upper()} · `{h.session_id}`)
+{i18n.t("resume_workdir")}: `{h.workspace_path}`
 
 {h.markdown_handoff}
 
 ---
-{i18n.t('resume_footer')}
+{i18n.t("resume_footer")}
 """
 
     def _tool_search_project_memory(self, args: dict[str, Any]) -> str:
@@ -310,7 +358,7 @@ class MCPServer:
     def _schedule_maintenance(self, args: Any) -> None:
         """Any call with workspace_path checks (without waiting) whether that project's bank is up to date."""
         workspace = args.get("workspace_path") if isinstance(args, dict) else None
-        if not isinstance(workspace, str) or not workspace.strip().startswith("/"):
+        if not isinstance(workspace, str) or not is_absolute_workspace(workspace):
             return
         try:
             self.service.maybe_schedule_maintenance(workspace)
@@ -332,7 +380,11 @@ class MCPServer:
             self._result(req_id, {"content": [{"type": "text", "text": f"Internal error: {msg}"}], "isError": True})
 
     def handle_message(self, message: Any) -> None:
-        if not isinstance(message, dict) or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str):
+        if (
+            not isinstance(message, dict)
+            or message.get("jsonrpc") != "2.0"
+            or not isinstance(message.get("method"), str)
+        ):
             req_id = message.get("id") if isinstance(message, dict) else None
             if req_id is not None or not isinstance(message, dict):
                 self._error(req_id, -32600, "Invalid JSON-RPC request.")
@@ -349,12 +401,19 @@ class MCPServer:
         if method == "initialize":
             requested = params.get("protocolVersion") if isinstance(params, dict) else None
             version = requested if requested in SUPPORTED_PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
-            self._result(req_id, {
-                "protocolVersion": version,
-                "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "cross-session-mcp", "title": "Cross-Session Handoff", "version": __version__},
-                "instructions": SERVER_INSTRUCTIONS,
-            })
+            self._result(
+                req_id,
+                {
+                    "protocolVersion": version,
+                    "capabilities": {"tools": {"listChanged": False}},
+                    "serverInfo": {
+                        "name": "cross-session-mcp",
+                        "title": "Cross-Session Handoff",
+                        "version": __version__,
+                    },
+                    "instructions": SERVER_INSTRUCTIONS,
+                },
+            )
         elif method == "ping":
             self._result(req_id, {})
         elif method == "tools/list":
@@ -367,7 +426,11 @@ class MCPServer:
             # block ping or other requests.
             self._executor.submit(self._run_tool, req_id, params["name"], params.get("arguments") or {})
         elif method in ("resources/list", "resources/templates/list", "prompts/list"):
-            key = {"resources/list": "resources", "resources/templates/list": "resourceTemplates", "prompts/list": "prompts"}[method]
+            key = {
+                "resources/list": "resources",
+                "resources/templates/list": "resourceTemplates",
+                "prompts/list": "prompts",
+            }[method]
             self._result(req_id, {key: []})
         else:
             self._error(req_id, -32601, f"Unsupported method: {method}")

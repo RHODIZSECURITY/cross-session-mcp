@@ -15,8 +15,14 @@ from cross_session_mcp.readers.cursor import CursorSessionReader
 from cross_session_mcp.readers.opencode import OpenCodeSessionReader
 from tests.conftest import WORKSPACE, make_copilot_store, make_cursor_store
 
-_STORE_VARS = ("CROSS_SESSION_CLAUDE_DIR", "CROSS_SESSION_AGY_DIRS", "CROSS_SESSION_OPENCODE_DB",
-               "CROSS_SESSION_CODEX_HOME", "CROSS_SESSION_CURSOR_DIR", "CROSS_SESSION_VSCODE_DIRS")
+_STORE_VARS = (
+    "CROSS_SESSION_CLAUDE_DIR",
+    "CROSS_SESSION_AGY_DIRS",
+    "CROSS_SESSION_OPENCODE_DB",
+    "CROSS_SESSION_CODEX_HOME",
+    "CROSS_SESSION_CURSOR_DIR",
+    "CROSS_SESSION_VSCODE_DIRS",
+)
 
 
 @pytest.fixture
@@ -91,12 +97,15 @@ def test_agy(stores):
     assert "run_command" in d.turns[1].content
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ('["file:///a/b%20c"]', "/a/b c"),
-    ("file:///a/b,file:///c", "/a/b"),
-    ("", ""),
-    ("[]", ""),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ('["file:///a/b%20c"]', "/a/b c"),
+        ("file:///a/b,file:///c", "/a/b"),
+        ("", ""),
+        ("[]", ""),
+    ],
+)
 def test_parse_workspace_uris(raw, expected):
     assert parse_workspace_uris(raw) == expected
 
@@ -184,21 +193,24 @@ def test_copilot_multi_root_workspace_resolution(tmp_path):
     ws_file = tmp_path / "proj.code-workspace"
     ws_file.write_text(json.dumps({"folders": [{"path": "repo"}]}))
     (ws / "workspace.json").write_text(json.dumps({"workspace": ws_file.as_uri()}))
-    (ws / "chatSessions" / "s.json").write_text(json.dumps(
-        {"sessionId": "s", "requests": [{"message": {"text": "hello"}, "response": []}]}))
+    (ws / "chatSessions" / "s.json").write_text(
+        json.dumps({"sessionId": "s", "requests": [{"message": {"text": "hello"}, "response": []}]})
+    )
     assert CopilotSessionReader([user]).list_sessions()[0].workspace_path == str(tmp_path / "repo")
 
 
 def test_replay_operations():
-    state = replay_operations([
-        {"kind": 0, "v": {"a": {"list": [1, 2, 3]}}},
-        {"kind": 2, "k": ["a", "list"], "v": [4]},
-        {"kind": 2, "k": ["a", "list"], "i": 1, "v": [9]},
-        {"kind": 1, "k": ["a", "x"], "v": "y"},
-        {"kind": 3, "k": ["a", "x"]},
-        {"kind": 1, "k": ["does", "not-exist"], "v": 1},  # ignored without breaking
-        {"kind": 2, "k": ["new"], "v": [1]},
-    ])
+    state = replay_operations(
+        [
+            {"kind": 0, "v": {"a": {"list": [1, 2, 3]}}},
+            {"kind": 2, "k": ["a", "list"], "v": [4]},
+            {"kind": 2, "k": ["a", "list"], "i": 1, "v": [9]},
+            {"kind": 1, "k": ["a", "x"], "v": "y"},
+            {"kind": 3, "k": ["a", "x"]},
+            {"kind": 1, "k": ["does", "not-exist"], "v": 1},  # ignored without breaking
+            {"kind": 2, "k": ["new"], "v": [1]},
+        ]
+    )
     assert state == {"a": {"list": [1, 9]}, "new": [1]}
 
 

@@ -56,6 +56,7 @@ def set_session(svc, session_id, updated=None, created=None):
 
 def iso(offset_seconds):
     from datetime import datetime, timezone
+
     return datetime.fromtimestamp(time.time() + offset_seconds, timezone.utc).isoformat(timespec="microseconds")
 
 
@@ -228,10 +229,19 @@ def test_interrupted_maintenance_resumes_with_missing_digests_only(bank):
 @pytest.fixture
 def searchable(bank):
     bank.agent.extra_entries = [
-        {"id": None, "kind": "T", "text": "Docker without network in CI → missing --network host → add it",
-         "evidence_sessions": []},
-        {"id": None, "kind": "D", "text": "Use Alembic for migrations", "why": "versioned history",
-         "evidence_sessions": []},
+        {
+            "id": None,
+            "kind": "T",
+            "text": "Docker without network in CI → missing --network host → add it",
+            "evidence_sessions": [],
+        },
+        {
+            "id": None,
+            "kind": "D",
+            "text": "Use Alembic for migrations",
+            "why": "versioned history",
+            "evidence_sessions": [],
+        },
     ]
     bank.update_project_memory(WORKSPACE)
     return bank
@@ -245,8 +255,9 @@ def test_search_finds_active_and_archived_entries_without_llm(searchable):
         if e["kind"] == "D" and "Alembic" in e["text"]:
             e["status"] = "archived"
     mem = searchable.db.get_memory(WORKSPACE)
-    searchable.db.save_memory_version(WORKSPACE, mem["version"], mem["rendered_md"], mem["window"], mem["state"],
-                                      "m", entries)
+    searchable.db.save_memory_version(
+        WORKSPACE, mem["version"], mem["rendered_md"], mem["window"], mem["state"], "m", entries
+    )
     calls = searchable.agent.calls
     out = searchable.search_project_memory("DOCKER", WORKSPACE)
     assert f"[{t['id']}]" in out and "(active" in out
@@ -263,7 +274,9 @@ def test_search_excludes_forgotten_and_reports_no_matches(searchable):
 
 def test_search_includes_handoffs_and_all_projects(searchable):
     sid = ordered(searchable)[0]
-    handoff = "### 1. Intent and scope\n- Migrate to Kubernetes\n### 5. Errors → fix\n- Helm failed because of the chart"
+    handoff = (
+        "### 1. Intent and scope\n- Migrate to Kubernetes\n### 5. Errors → fix\n- Helm failed because of the chart"
+    )
     searchable.db.save_digest(sid, "claude", WORKSPACE, iso(0), {"relevant": True}, handoff, "m")
     out = searchable.search_project_memory("helm chart", WORKSPACE)
     assert f"claude:{sid[:8]}" in out and "handoff · 5. Errors → fix" in out and "Kubernetes" not in out
@@ -295,15 +308,23 @@ def test_search_ignores_accents():
 
 
 def test_search_redacts_secrets():
-    results = memory.search("token", [{"id": "T1", "kind": "T", "status": "active", "evidence": [],
-                                       "text": "token ghp_" + "a" * 36 + " leaked"}], [])
+    results = memory.search(
+        "token",
+        [{"id": "T1", "kind": "T", "status": "active", "evidence": [], "text": "token ghp_" + "a" * 36 + " leaked"}],
+        [],
+    )
     assert "ghp_" not in memory.render_search("token", results)
 
 
 # ------------------------------------------------------------------ select_turns
 def test_select_turns_query_context_and_max():
-    turns = [SessionTurn("user", "start"), SessionTurn("tool", "output"), SessionTurn("assistant", "Migración hecha"),
-             SessionTurn("user", "something else"), SessionTurn("assistant", "end")]
+    turns = [
+        SessionTurn("user", "start"),
+        SessionTurn("tool", "output"),
+        SessionTurn("assistant", "Migración hecha"),
+        SessionTurn("user", "something else"),
+        SessionTurn("assistant", "end"),
+    ]
     shown, omitted = select_turns(turns, None, False, 10)
     assert [t.role for t in shown] == ["user", "assistant", "user", "assistant"] and omitted == 0
     shown, omitted = select_turns(turns, "MIGRACION", False, 10)  # accent- and case-insensitive

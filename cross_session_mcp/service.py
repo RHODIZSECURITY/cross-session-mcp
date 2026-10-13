@@ -25,6 +25,7 @@ from cross_session_mcp.readers import get_all_readers
 from cross_session_mcp.readers.base import BaseSessionReader
 from cross_session_mcp.utils import (
     clean_text,
+    is_absolute_workspace,
     is_safe_session_id,
     iso_to_epoch,
     logger,
@@ -41,7 +42,10 @@ RETRY_BACKOFF = 30 * 60  # s: after an LLM failure, the background does not retr
 
 
 def select_turns(
-    turns: Sequence[SessionTurn], query: str | None, include_tools: bool, max_turns: int,
+    turns: Sequence[SessionTurn],
+    query: str | None,
+    include_tools: bool,
+    max_turns: int,
 ) -> tuple[list[SessionTurn], int]:
     """Turns to show and how many are left out. With `query`: only those containing the text (ignoring case
     and accents) with one turn of context on each side; `max_turns` applies after the filter."""
@@ -144,7 +148,9 @@ class CrossSessionService:
         candidates = exact or matches
         if len({(m.session_id, m.harness) for m in candidates}) > 1:
             options = ", ".join(f"{m.harness}:{m.session_id}" for m in candidates[:5])
-            raise SessionError(f"The ID '{session_id}' is ambiguous. Matches: {options}. Give more characters or the harness.")
+            raise SessionError(
+                f"The ID '{session_id}' is ambiguous. Matches: {options}. Give more characters or the harness."
+            )
         return candidates[0].session_id, candidates[0].harness
 
     def get_detail(self, session_id: str, harness: str | None = None, max_turns: int | None = 25) -> SessionDetail:
@@ -222,10 +228,20 @@ class CrossSessionService:
         focus = (focus_area or "").strip()
         header = self._handoff_header(s)
 
-        def result(markdown: str, model: str, from_cache: bool = False, generated_at: str | None = None) -> HandoffResult:
-            return HandoffResult(s.session_id, s.harness, s.workspace_path, header + clean_text(markdown), model,
-                                 generated_at or now_utc_iso(), from_cache=from_cache, focus_area=focus,
-                                 source_updated_at=s.updated_at)
+        def result(
+            markdown: str, model: str, from_cache: bool = False, generated_at: str | None = None
+        ) -> HandoffResult:
+            return HandoffResult(
+                s.session_id,
+                s.harness,
+                s.workspace_path,
+                header + clean_text(markdown),
+                model,
+                generated_at or now_utc_iso(),
+                from_cache=from_cache,
+                focus_area=focus,
+                source_updated_at=s.updated_at,
+            )
 
         has_key = getattr(self.agent, "available", True)
         reason, offline_model = ("llm_failed", "offline-fallback") if has_key else ("no_key", "offline-extractor")
@@ -238,7 +254,9 @@ class CrossSessionService:
         if not force_refresh:
             cached = self.db.get_digest(s.session_id, s.harness, s.updated_at)
             if cached:
-                return result(cached["handoff_md"], cached["model_used"], from_cache=True, generated_at=cached["generated_at"])
+                return result(
+                    cached["handoff_md"], cached["model_used"], from_cache=True, generated_at=cached["generated_at"]
+                )
         digest = self.agent.generate_digest(detail) if has_key else None
         if digest:
             saved = self._save_digest(s, digest)
@@ -249,7 +267,7 @@ class CrossSessionService:
     @staticmethod
     def _workspace(value: str | None) -> str:
         ws = normalize_workspace_filter(value)
-        if not ws or not ws.startswith("/"):
+        if not ws or not is_absolute_workspace(ws):
             raise SessionError("workspace_path must be an absolute path (e.g. /home/user/project).")
         return ws
 
@@ -301,8 +319,14 @@ class CrossSessionService:
         return sum(done), failures, unreadable
 
     def _persist(
-        self, workspace: str, base_version: int, entries: list[dict[str, Any]], window: list[dict[str, Any]],
-        state: list[str], model_used: str, note: str | None = None,
+        self,
+        workspace: str,
+        base_version: int,
+        entries: list[dict[str, Any]],
+        window: list[dict[str, Any]],
+        state: list[str],
+        model_used: str,
+        note: str | None = None,
     ) -> tuple[int, str]:
         now = now_utc_iso()
         version = base_version + 1
@@ -311,7 +335,11 @@ class CrossSessionService:
         return version, md
 
     def _consolidate_once(
-        self, workspace: str, window: list[dict[str, Any]], digests: dict[str, dict[str, Any]], n: int,
+        self,
+        workspace: str,
+        window: list[dict[str, Any]],
+        digests: dict[str, dict[str, Any]],
+        n: int,
     ) -> tuple[int, str, str]:
         """One consolidation over the current memory. Returns (version, markdown, model)."""
         current = self.db.get_memory(workspace)
@@ -320,9 +348,14 @@ class CrossSessionService:
         refs = self._refs(window)
         ref_by_key = {v: k for k, v in refs.items()}
         prompt_digests = [
-            {"ref": ref_by_key[w["key"]], "harness": w["harness"], "updated_at": w["updated_at"],
-             "digest": digests[w["key"]]["digest"]}
-            for w in window if w["relevant"]
+            {
+                "ref": ref_by_key[w["key"]],
+                "harness": w["harness"],
+                "updated_at": w["updated_at"],
+                "digest": digests[w["key"]]["digest"],
+            }
+            for w in window
+            if w["relevant"]
         ]
         out = self.agent.consolidate_memory(entries, prompt_digests, ref_by_key, workspace, n)
         if out is None:
@@ -372,11 +405,18 @@ class CrossSessionService:
 
             current = self.db.get_memory(ws)
             if current and not pending and not force_refresh:
-                signature = memory.window_signature([memory.window_entry(s, digests[memory.session_key(s.harness, s.session_id)])
-                                                     for s in summaries])
+                signature = memory.window_signature(
+                    [memory.window_entry(s, digests[memory.session_key(s.harness, s.session_id)]) for s in summaries]
+                )
                 if signature == memory.window_signature(current["window"]):
-                    result = MemoryUpdateResult(ws, current["rendered_md"], current["version"], up_to_date=True,
-                                                digests_cached=len(summaries), model_used=current["model_used"])
+                    result = MemoryUpdateResult(
+                        ws,
+                        current["rendered_md"],
+                        current["version"],
+                        up_to_date=True,
+                        digests_cached=len(summaries),
+                        model_used=current["model_used"],
+                    )
                     result.exported_to = self._export(current["rendered_md"], export_path)
                     return result
 
@@ -415,8 +455,14 @@ class CrossSessionService:
                     ) from exc
 
             result = MemoryUpdateResult(
-                ws, md, version, digests_generated=generated, digests_cached=len(summaries) - len(pending),
-                llm_calls=llm_calls, model_used=model, warnings=warnings,
+                ws,
+                md,
+                version,
+                digests_generated=generated,
+                digests_cached=len(summaries) - len(pending),
+                llm_calls=llm_calls,
+                model_used=model,
+                warnings=warnings,
             )
             result.exported_to = self._export(md, export_path)
             return result
@@ -458,12 +504,15 @@ class CrossSessionService:
         mem = self.db.get_memory(ws)
         if not mem:
             if updating:
-                return (f"No memory for `{ws}` yet: it is being generated in the background. "
-                        "Check again in a few minutes.")
+                return (
+                    f"No memory for `{ws}` yet: it is being generated in the background. Check again in a few minutes."
+                )
             if not getattr(self.agent, "available", True):
-                return (f"No memory saved for `{ws}` and no Gemini credential to generate it: set "
-                        "GEMINI_API_KEY, ~/.ai/.gemini_env, OAuth via `gcloud auth application-default-login`, or "
-                        "`cross-session-mcp antigravity-login`, or set `CROSS_SESSION_OPENAI_BASE`.")
+                return (
+                    f"No memory saved for `{ws}` and no Gemini credential to generate it: set "
+                    "GEMINI_API_KEY, ~/.ai/.gemini_env, OAuth via `gcloud auth application-default-login`, or "
+                    "`cross-session-mcp antigravity-login`, or set `CROSS_SESSION_OPENAI_BASE`."
+                )
             return self._no_memory_text(ws)
         saved = {(w["key"], w.get("updated_at") or "") for w in mem["window"]}
         current = self.recent_sessions(ws, max(len(mem["window"]), 1))
@@ -474,8 +523,7 @@ class CrossSessionService:
             if updating:
                 note = f"> ⚠️ {new} {word}; updating in the background."
             else:
-                note = (f"> ⚠️ {new} {word} since the last update. "
-                        "Run `update_project_memory` to add them.")
+                note = f"> ⚠️ {new} {word} since the last update. Run `update_project_memory` to add them."
             text = note + "\n\n" + text
         elif updating:
             text = "> ℹ️ Updating in the background.\n\n" + text
@@ -497,8 +545,10 @@ class CrossSessionService:
         lines = [f"### History of `{ws}`"]
         for v in versions:
             ids = ", ".join(f"{w['harness']}:{w['session_id'][:8]}" for w in v["window"])
-            lines.append(f"- v{v['version']} · {v['created_at'][:16].replace('T', ' ')} UTC · {v['model_used']} · "
-                         f"{len(v['window'])} sessions ({ids})")
+            lines.append(
+                f"- v{v['version']} · {v['created_at'][:16].replace('T', ' ')} UTC · {v['model_used']} · "
+                f"{len(v['window'])} sessions ({ids})"
+            )
         return "\n".join(lines)
 
     def edit_memory_entry(self, workspace: str, entry_id: str, action: str) -> str:
@@ -525,8 +575,15 @@ class CrossSessionService:
                 raise SessionError(f"Unknown action: {action}")
             entry["updated_at"] = now_utc_iso()
             try:
-                version, _ = self._persist(ws, mem["version"], entries, mem["window"], mem["state"],
-                                           mem["model_used"], note=f"manual: {action} {eid}")
+                version, _ = self._persist(
+                    ws,
+                    mem["version"],
+                    entries,
+                    mem["window"],
+                    mem["state"],
+                    mem["model_used"],
+                    note=f"manual: {action} {eid}",
+                )
             except ConcurrentUpdateError as exc:
                 raise SessionError(f"The memory changed while it was being edited ({exc}). Try again.") from exc
         return f"{eid}: {action} applied (memory v{version})."
@@ -586,7 +643,7 @@ class CrossSessionService:
         if not self.background:
             return "disabled"
         ws = normalize_workspace_filter(workspace)
-        if not ws or not ws.startswith("/"):
+        if not ws or not is_absolute_workspace(ws):
             return "idle"
         if not getattr(self.agent, "available", True):
             return "no-key"
@@ -638,7 +695,12 @@ class CrossSessionService:
 
     # ------------------------------------------------------------------ topic search
     def search_project_memory(
-        self, topic: str, workspace: str, all_projects: bool = False, limit: int = 20, synthesize: bool = False,
+        self,
+        topic: str,
+        workspace: str,
+        all_projects: bool = False,
+        limit: int = 20,
+        synthesize: bool = False,
     ) -> str:
         """Local search (no LLM) in active/archived entries and handoffs; optional synthesis, never saved."""
         ws = self._workspace(workspace)
@@ -653,9 +715,13 @@ class CrossSessionService:
         if synthesize and results:
             out = None
             if getattr(self.agent, "available", True):
-                out = self.agent.synthesize_topic(topic, memory.render_search(topic, results, limit, all_projects, None))
+                out = self.agent.synthesize_topic(
+                    topic, memory.render_search(topic, results, limit, all_projects, None)
+                )
             if out:
                 text += f"\n\n## Pattern synthesis ({out[1]}, not saved)\n{out[0]}"
             else:
-                text += "\n\n> ⚠️ No synthesis: there is no Gemini credential or the API failed. Only the matches are shown."
+                text += (
+                    "\n\n> ⚠️ No synthesis: there is no Gemini credential or the API failed. Only the matches are shown."
+                )
         return text

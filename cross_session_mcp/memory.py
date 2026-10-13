@@ -27,11 +27,20 @@ DEFAULT_WINDOW = 8
 
 _STOPWORDS = frozenset(
     "el la los las un una unos unas de del al y o u e a en con por para que se su sus lo le les es son "
-    "the a an of to and or in on for with is are be as at by it this that"
-    .split()
+    "the a an of to and or in on for with is are be as at by it this that".split()
 )
-_CLAUDE_KEYWORDS = ("skill", "hook", "slash command", "/compact", "claude.md", "~/.claude", ".claude/",
-                    "claude-mem", "claude code", "plugin")
+_CLAUDE_KEYWORDS = (
+    "skill",
+    "hook",
+    "slash command",
+    "/compact",
+    "claude.md",
+    "~/.claude",
+    ".claude/",
+    "claude-mem",
+    "claude code",
+    "plugin",
+)
 
 
 def max_lines() -> int:
@@ -134,8 +143,10 @@ def apply_consolidation(
 
     def is_forgotten(text: str, kind: str) -> bool:
         h = text_hash(text)
-        return any(f["kind"] == kind and (f.get("text_hash") == h or jaccard(f["text"], text) >= JACCARD_MERGE)
-                   for f in forgotten)
+        return any(
+            f["kind"] == kind and (f.get("text_hash") == h or jaccard(f["text"], text) >= JACCARD_MERGE)
+            for f in forgotten
+        )
 
     for raw in llm_output.get("entries") or []:
         if not isinstance(raw, dict):
@@ -153,14 +164,30 @@ def apply_consolidation(
         if target is None:
             if is_forgotten(text, kind):
                 continue
-            target = next((e for e in entries.values()
-                           if e["kind"] == kind and e["status"] == "active" and jaccard(e["text"], text) >= JACCARD_MERGE),
-                          None)
+            target = next(
+                (
+                    e
+                    for e in entries.values()
+                    if e["kind"] == kind and e["status"] == "active" and jaccard(e["text"], text) >= JACCARD_MERGE
+                ),
+                None,
+            )
         if target is None:
             next_num[kind] += 1
-            target = {"id": f"{kind}{next_num[kind]}", "kind": kind, "text": text, "why": why, "scope": scope,
-                      "evidence": [], "status": "active", "pinned": False, "text_hash": text_hash(text),
-                      "first_seen": now_iso, "last_seen": None, "updated_at": now_iso}
+            target = {
+                "id": f"{kind}{next_num[kind]}",
+                "kind": kind,
+                "text": text,
+                "why": why,
+                "scope": scope,
+                "evidence": [],
+                "status": "active",
+                "pinned": False,
+                "text_hash": text_hash(text),
+                "first_seen": now_iso,
+                "last_seen": None,
+                "updated_at": now_iso,
+            }
             entries[target["id"]] = target
             keys = keys or list(fallback_keys)
         else:
@@ -169,8 +196,9 @@ def apply_consolidation(
             if not target["pinned"]:
                 if target["status"] == "archived":
                     target["status"] = "active"
-                target.update(text=text, why=why or target.get("why", ""), text_hash=text_hash(text),
-                              updated_at=now_iso)
+                target.update(
+                    text=text, why=why or target.get("why", ""), text_hash=text_hash(text), updated_at=now_iso
+                )
                 if scope:
                     target["scope"] = scope
         target["evidence"] = sorted(set(target["evidence"]) | set(keys))
@@ -201,7 +229,7 @@ def apply_consolidation(
     # Per-section limits: what does not fit is archived (pinned entries never are)
     for kind in KINDS:
         active = _ranked([e for e in entries.values() if e["kind"] == kind and e["status"] == "active"], window_keys)
-        for e in active[SECTION_LIMITS[kind]:]:
+        for e in active[SECTION_LIMITS[kind] :]:
             if not e["pinned"]:
                 e.update(status="archived", updated_at=now_iso)
 
@@ -265,7 +293,7 @@ def render_markdown(
     bodies: dict[str, list[str]] = {"state": [f"- {_one_line(s)}" for s in state[:STATE_LIMIT]]}
     for kind in KINDS:
         active = _ranked([e for e in entries if e["kind"] == kind and e["status"] == "active"], window_keys)
-        bodies[kind] = [_entry_line(e, window_keys, n) for e in active[:SECTION_LIMITS[kind]]]
+        bodies[kind] = [_entry_line(e, window_keys, n) for e in active[: SECTION_LIMITS[kind]]]
     bodies["log"] = [
         f"- {(w.get('updated_at') or '')[:10]} · {w['harness']} · {w['session_id'][:8]} · {w.get('summary_line') or t('memory_no_summary')}"
         for w in sorted(window, key=lambda w: w.get("updated_at") or "", reverse=True)
@@ -284,7 +312,7 @@ def render_markdown(
     lines = list(header)
     for key in _SECTIONS:
         lines.append(f"## {t('section_' + key)}")
-        lines.extend(bodies[key] or [t('memory_empty')])
+        lines.extend(bodies[key] or [t("memory_empty")])
         lines.append("")
     md = "\n".join(lines[:limit_lines]).rstrip() + "\n"
     return redact_pii(redact(md))
@@ -301,8 +329,13 @@ def classify_target(entry: dict[str, Any]) -> str:
     return "claude" if any(k in blob for k in _CLAUDE_KEYWORDS) else "agents"
 
 
-_SUGGESTED_SECTION = {"A": "Conventions", "D": "Design decisions", "T": "Known pitfalls",
-                      "C": "Commands", "P": "Pending"}
+_SUGGESTED_SECTION = {
+    "A": "Conventions",
+    "D": "Design decisions",
+    "T": "Known pitfalls",
+    "C": "Commands",
+    "P": "Pending",
+}
 
 
 def read_rule_files(workspace: str) -> dict[str, list[str]]:
@@ -346,22 +379,35 @@ def suggest_rules(
                     break
             if present_in:
                 break
-        out.append({
-            "id": e["id"], "rule": e["text"], "evidence": f"{len(ev)}/{n}", "sessions": ev,
-            "target": dest, "file": "CLAUDE.md" if dest == "claude" else "AGENTS.md",
-            "section": _SUGGESTED_SECTION.get(e["kind"], "Conventions"),
-            "present": present_in is not None, "present_in": present_in, "present_line": present_line,
-        })
+        out.append(
+            {
+                "id": e["id"],
+                "rule": e["text"],
+                "evidence": f"{len(ev)}/{n}",
+                "sessions": ev,
+                "target": dest,
+                "file": "CLAUDE.md" if dest == "claude" else "AGENTS.md",
+                "section": _SUGGESTED_SECTION.get(e["kind"], "Conventions"),
+                "present": present_in is not None,
+                "present_in": present_in,
+                "present_line": present_line,
+            }
+        )
     return out
 
 
 def render_suggestions(workspace: str, candidates: Sequence[dict[str, Any]], target: str = "both") -> str:
     if not candidates:
-        return (f"No candidate rules for `{workspace}`"
-                + (f" targeting {target}" if target != "both" else "")
-                + ". They need `A#` entries, or `D#`/`T#` entries with evidence in ≥ 3 sessions or pinned.")
-    lines = [f"### Candidate rules for `{workspace}`\n",
-             "| ID | Rule | Evidence | Target | Status |", "|---|---|---|---|---|"]
+        return (
+            f"No candidate rules for `{workspace}`"
+            + (f" targeting {target}" if target != "both" else "")
+            + ". They need `A#` entries, or `D#`/`T#` entries with evidence in ≥ 3 sessions or pinned."
+        )
+    lines = [
+        f"### Candidate rules for `{workspace}`\n",
+        "| ID | Rule | Evidence | Target | Status |",
+        "|---|---|---|---|---|",
+    ]
     for c in candidates:
         status = f"already in {c['present_in']}: “{c['present_line'][:60]}”" if c["present"] else "new"
         lines.append(f"| {c['id']} | {c['rule'].replace('|', '/')} | {c['evidence']} | {c['file']} | {status} |")
@@ -410,7 +456,7 @@ def _snippet(text: str, terms: Sequence[str]) -> str:
     norm = normalize(flat)  # NFKD + filtering keeps the length for accented Latin text (one letter per letter)
     idx = min((norm.find(t) for t in terms if norm.find(t) >= 0), default=0)
     start = max(0, idx - _SNIPPET // 3)
-    piece = flat[start:start + _SNIPPET]
+    piece = flat[start : start + _SNIPPET]
     return ("…" if start else "") + piece + ("…" if start + _SNIPPET < len(flat) else "")
 
 
@@ -441,12 +487,21 @@ def search(
         blob = f"{e.get('text', '')} — {e.get('why', '')}" if e.get("why") else e.get("text", "")
         score = _score(blob, terms)
         if score:
-            results.append({
-                "source": "entry", "id": e["id"], "kind": e["kind"], "status": e["status"],
-                "evidence": len(e.get("evidence") or []), "sessions": list(e.get("evidence") or []),
-                "date": e.get("last_seen") or e.get("updated_at") or "", "snippet": _snippet(blob, terms),
-                "text": e.get("text", ""), "score": score, "workspace_path": e.get("workspace_path", ""),
-            })
+            results.append(
+                {
+                    "source": "entry",
+                    "id": e["id"],
+                    "kind": e["kind"],
+                    "status": e["status"],
+                    "evidence": len(e.get("evidence") or []),
+                    "sessions": list(e.get("evidence") or []),
+                    "date": e.get("last_seen") or e.get("updated_at") or "",
+                    "snippet": _snippet(blob, terms),
+                    "text": e.get("text", ""),
+                    "score": score,
+                    "workspace_path": e.get("workspace_path", ""),
+                }
+            )
     entry_results = [r for r in results if r["source"] == "entry"]
     for d in digests:
         key = session_key(d["harness"], d["session_id"])
@@ -464,30 +519,45 @@ def search(
             # Already represented by a memory entry that comes from this session
             if any(key in r["sessions"] and jaccard(r["text"], text) >= JACCARD_MERGE for r in entry_results):
                 continue
-            results.append({
-                "source": "session", "ref": ref, "label": label, "date": d.get("updated_at") or "",
-                "snippet": _snippet(text, terms), "score": score, "workspace_path": d.get("workspace_path", ""),
-            })
+            results.append(
+                {
+                    "source": "session",
+                    "ref": ref,
+                    "label": label,
+                    "date": d.get("updated_at") or "",
+                    "snippet": _snippet(text, terms),
+                    "score": score,
+                    "workspace_path": d.get("workspace_path", ""),
+                }
+            )
     results.sort(key=lambda r: r["date"], reverse=True)
     results.sort(key=lambda r: r["score"], reverse=True)
     return results
 
 
 def render_search(
-    topic: str, results: Sequence[dict[str, Any]], limit: int = SEARCH_DEFAULT_LIMIT,
-    all_projects: bool = False, workspace: str | None = None,
+    topic: str,
+    results: Sequence[dict[str, Any]],
+    limit: int = SEARCH_DEFAULT_LIMIT,
+    all_projects: bool = False,
+    workspace: str | None = None,
 ) -> str:
     scope = "all projects" if all_projects else f"`{workspace}`" if workspace else "the bank"
     if not results:
-        return (f"No matches for “{clean_text(topic)}” in {scope}. Try other terms"
-                + ("" if all_projects else " or all_projects=true") + ".")
+        return (
+            f"No matches for “{clean_text(topic)}” in {scope}. Try other terms"
+            + ("" if all_projects else " or all_projects=true")
+            + "."
+        )
     shown = results[:limit]
     lines = [f"### Memory bank — “{clean_text(topic)}” in {scope}: {len(results)} match(es)", ""]
     for r in shown:
         date = (r.get("date") or "")[:10] or "n/d"
         project = f" · `{r['workspace_path']}`" if all_projects and r.get("workspace_path") else ""
         if r["source"] == "entry":
-            lines.append(f"- **[{r['id']}]** ({r['status']}, evidence {r['evidence']} sess., {date}){project}: {r['snippet']}")
+            lines.append(
+                f"- **[{r['id']}]** ({r['status']}, evidence {r['evidence']} sess., {date}){project}: {r['snippet']}"
+            )
         else:
             lines.append(f"- **{r['ref']}** · {r['label']} ({date}){project}: {r['snippet']}")
     if len(results) > len(shown):

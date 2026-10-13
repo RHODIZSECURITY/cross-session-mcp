@@ -202,14 +202,33 @@ def normalize_workspace_filter(value: str | None) -> str | None:
     return value.rstrip("/") or "/"
 
 
+def is_absolute_workspace(ws: str | None) -> bool:
+    """True if ws is an absolute path on POSIX or Windows (drive letter, UNC, or /)."""
+    if not ws or not ws.strip():
+        return False
+    ws = ws.strip()
+    if ws.startswith(("/", "\\")):
+        return True
+    if len(ws) >= 3 and ws[1] == ":" and ws[2] in ("/", "\\"):
+        return True
+    if ws.startswith("\\\\?\\"):
+        return True
+    try:
+        return Path(ws).is_absolute()
+    except Exception:
+        return False
+
+
 def workspace_matches(filter_value: str | None, workspace: str) -> bool:
     """Absolute path -> matches the path or its subdirectories. Relative text -> substring."""
     f = normalize_workspace_filter(filter_value)
     if not f:
         return True
-    workspace = (workspace or "").rstrip("/")
-    if f.startswith("/"):
-        return workspace == f or workspace.startswith(f + "/")
+    workspace = (workspace or "").rstrip("/\\")
+    if is_absolute_workspace(f):
+        f_norm = f.replace("\\", "/").lower().rstrip("/")
+        w_norm = workspace.replace("\\", "/").lower().rstrip("/")
+        return w_norm == f_norm or w_norm.startswith(f_norm + "/")
     return f.lower() in workspace.lower()
 
 
