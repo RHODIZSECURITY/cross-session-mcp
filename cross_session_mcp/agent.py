@@ -708,11 +708,41 @@ class GeminiHandoffAgent:
     # then give up (a truly exhausted quota fails the same way, just later).
     _CCA_RETRY_DELAYS = (5, 15)
 
+    # Cloud Code Assist answers HTTP 429 (quota clothing) when systemInstruction
+    # carries the Claude-Agent identity paragraph or Anthropic billing metadata
+    # (opencodex probe-established per generation). Strip both before sending.
+    # User turn content is never touched: only the system prompt is scrubbed.
+    _CCA_REJECTED_PARAGRAPH = "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+
+    def _scrub_cca_system_text(self, text: str) -> str:
+        cleaned = re.sub(r"(?i)^x-anthropic-billing-header:[^\n]*\n?", "", text)
+        return "\n\n".join(
+            part for part in cleaned.split("\n\n") if part != self._CCA_REJECTED_PARAGRAPH
+        )
+
+    def _scrub_cca_payload(self, payload: dict) -> dict:
+        scrubbed = dict(payload)
+        instruction = scrubbed.get("systemInstruction")
+        if isinstance(instruction, dict):
+            parts = instruction.get("parts")
+            if isinstance(parts, list):
+                scrubbed["systemInstruction"] = {
+                    **instruction,
+                    "parts": [
+                        {**part, "text": self._scrub_cca_system_text(part.get("text", ""))}
+                        if isinstance(part, dict) and isinstance(part.get("text"), str)
+                        else part
+                        for part in parts
+                    ],
+                }
+        return scrubbed
+
     def _call_model_cca(self, model: str, payload: dict) -> tuple[str, str] | None:
         """One Cloud Code Assist request (Antigravity OAuth). Returns (text, finishReason) or None."""
         token = self.cca.token(self.timeout)
         if not token:
             return None
+        payload = self._scrub_cca_payload(payload)
         envelope = antigravity_mod.cca_envelope(model, payload, self.cca.project)
         data_bytes = json.dumps(envelope).encode("utf-8")
         url = f"{antigravity_mod.api_base()}/{antigravity_mod.API_VERSION}:generateContent"

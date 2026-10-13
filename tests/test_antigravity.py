@@ -424,6 +424,35 @@ def test_cca_429_exhausted_gives_up(monkeypatch, tmp_path):
     assert sleeps == [5, 15]
 
 
+def test_cca_scrubs_rejected_system_text(monkeypatch, tmp_path):
+    agent = _agent_with_cca(monkeypatch, tmp_path)
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        if "oauth2.googleapis.com/token" in req.full_url:
+            return token_payload()
+        seen["body"] = json.loads(req.data.decode())
+        return _gemini_ok()
+
+    monkeypatch.setattr(agent_mod.urllib.request, "urlopen", fake_urlopen)
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": "billing header talk here is kept"}]}],
+        "systemInstruction": {"parts": [{
+            "text": "x-anthropic-billing-header: abc\nYou are helpful.\n\nYou are a Claude agent, built on Anthropic's Claude Agent SDK.\n\nDo the task."
+        }]},
+    }
+    text, _ = agent._call_model_cca("gemini-3.8-flash", payload)
+    assert text == "via-cca"
+    sent = seen["body"]["request"]["systemInstruction"]["parts"][0]["text"]
+    assert "x-anthropic-billing-header" not in sent
+    assert "You are a Claude agent" not in sent
+    assert "You are helpful." in sent and "Do the task." in sent
+    # user turns untouched
+    assert "billing header talk here is kept" in seen["body"]["request"]["contents"][0]["parts"][0]["text"]
+    # original payload not mutated
+    assert "x-anthropic-billing-header" in payload["systemInstruction"]["parts"][0]["text"]
+
+
 def test_cca_400_does_not_retry(monkeypatch, tmp_path):
     agent = _agent_with_cca(monkeypatch, tmp_path)
     sleeps = []
