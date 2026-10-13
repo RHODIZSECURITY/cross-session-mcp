@@ -37,10 +37,32 @@ CLIENT_ID = os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_ID") or "1071006060591-tmh
 CLIENT_SECRET = os.environ.get("GOOGLE_ANTIGRAVITY_CLIENT_SECRET") or ""
 
 
+def _secret_from_file() -> str:
+    """Reads the client secret from a KEY=VALUE file (default ~/.ai/.antigravity_env). Empty when absent."""
+    secret_file = Path(
+        os.environ.get(SECRET_FILE_ENV_VAR, Path.home() / ".ai" / ".antigravity_env")
+    ).expanduser()
+    try:
+        if not secret_file.is_file():
+            return ""
+        for line in secret_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if line.startswith("GOOGLE_ANTIGRAVITY_CLIENT_SECRET="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    return ""
+
+
 def _client_secret() -> str:
-    if not CLIENT_SECRET:
-        raise ValueError("set GOOGLE_ANTIGRAVITY_CLIENT_SECRET with the Antigravity desktop client secret (see README)")
-    return CLIENT_SECRET
+    if CLIENT_SECRET:
+        return CLIENT_SECRET
+    from_file = _secret_from_file()
+    if from_file:
+        return from_file
+    raise ValueError("set GOOGLE_ANTIGRAVITY_CLIENT_SECRET or store it in ~/.ai/.antigravity_env (see README)")
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 PROD_API = "https://cloudcode-pa.googleapis.com"
@@ -58,6 +80,7 @@ CALLBACK_PORT = 51121
 CALLBACK_PATH = "/callback"
 IDE_VERSION = "2.5.5"
 CRED_ENV_VAR = "CROSS_SESSION_ANTIGRAVITY_FILE"
+SECRET_FILE_ENV_VAR = "CROSS_SESSION_ANTIGRAVITY_SECRET_FILE"
 REQUEST_TIMEOUT = 30
 _REFRESH_SKEW = 5 * 60
 _ONBOARD_ATTEMPTS = 5

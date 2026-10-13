@@ -40,7 +40,7 @@ except Exception:
     HAS_ANTIGRAVITY_SDK = False
 
 
-DEFAULT_MODELS = ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-flash-latest"]
+DEFAULT_MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]
 GEMINI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 HANDOFF_SECTION_COUNT = 8
 
@@ -704,6 +704,10 @@ class GeminiHandoffAgent:
                         return json.loads(response.read().decode("utf-8"))
             raise
 
+    # 429s on the shared pool are usually transient rate limits: bounded retries,
+    # then give up (a truly exhausted quota fails the same way, just later).
+    _CCA_RETRY_DELAYS = (5, 15)
+
     def _call_model_cca(self, model: str, payload: dict) -> tuple[str, str] | None:
         """One Cloud Code Assist request (Antigravity OAuth). Returns (text, finishReason) or None."""
         token = self.cca.token(self.timeout)
@@ -712,19 +716,35 @@ class GeminiHandoffAgent:
         envelope = antigravity_mod.cca_envelope(model, payload, self.cca.project)
         data_bytes = json.dumps(envelope).encode("utf-8")
         url = f"{antigravity_mod.api_base()}/{antigravity_mod.API_VERSION}:generateContent"
-        try:
-            data = self._post_cca(url, data_bytes, token, refresh_on_401=True)
-        except urllib.error.HTTPError as exc:
-            body = ""
+        data = None
+        for attempt, delay in enumerate([0, *self._CCA_RETRY_DELAYS]):
+            if attempt:
+                time.sleep(delay)
+                token = self.cca.token(self.timeout)
+                if not token:
+                    return None
             try:
-                body = exc.read().decode("utf-8", "replace")[:300]
-            except Exception:
-                pass
-            logger.warning("Antigravity %s answered HTTP %s: %s", model, exc.code, redact(body))
+                data = self._post_cca(url, data_bytes, token, refresh_on_401=True)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code != 429 or attempt >= len(self._CCA_RETRY_DELAYS):
+                    body = ""
+                    try:
+                        body = exc.read().decode("utf-8", "replace")[:300]
+                    except Exception:
+                        pass
+                    logger.warning("Antigravity %s answered HTTP %s: %s", model, exc.code, redact(body))
+                    return None
+            except Exception as exc:
+                logger.warning("Antigravity %s failed (%s): %s", model, type(exc).__name__, redact(str(exc)))
+                return None
+        if data is None:
             return None
-        except Exception as exc:
-            logger.warning("Antigravity %s failed (%s): %s", model, type(exc).__name__, redact(str(exc)))
+        unwrapped = antigravity_mod.cca_unwrap(data)
+        if unwrapped is None:
+            logger.warning("Antigravity %s response missing response wrapper", model)
             return None
+        return _parse_candidates(model, unwrapped)
         unwrapped = antigravity_mod.cca_unwrap(data)
         if unwrapped is None:
             logger.warning("Antigravity %s response missing response wrapper", model)
