@@ -26,7 +26,7 @@ from cross_session_mcp.agent import GeminiHandoffAgent
 from cross_session_mcp.db import CrossSessionDB
 from cross_session_mcp.models import HARNESSES, SessionSummary
 from cross_session_mcp.service import CrossSessionService, SessionError, select_turns
-from cross_session_mcp.utils import logger, redact, setup_logging, truncate
+from cross_session_mcp.utils import is_absolute_workspace, logger, redact, setup_logging, truncate
 
 SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
@@ -310,7 +310,7 @@ class MCPServer:
     def _schedule_maintenance(self, args: Any) -> None:
         """Any call with workspace_path checks (without waiting) whether that project's bank is up to date."""
         workspace = args.get("workspace_path") if isinstance(args, dict) else None
-        if not isinstance(workspace, str) or not workspace.strip().startswith("/"):
+        if not isinstance(workspace, str) or not is_absolute_workspace(workspace):
             return
         try:
             self.service.maybe_schedule_maintenance(workspace)

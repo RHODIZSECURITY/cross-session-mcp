@@ -25,6 +25,7 @@ from cross_session_mcp.readers import get_all_readers
 from cross_session_mcp.readers.base import BaseSessionReader
 from cross_session_mcp.utils import (
     clean_text,
+    is_absolute_workspace,
     is_safe_session_id,
     iso_to_epoch,
     logger,
@@ -249,7 +250,7 @@ class CrossSessionService:
     @staticmethod
     def _workspace(value: str | None) -> str:
         ws = normalize_workspace_filter(value)
-        if not ws or not ws.startswith("/"):
+        if not ws or not is_absolute_workspace(ws):
             raise SessionError("workspace_path must be an absolute path (e.g. /home/user/project).")
         return ws
 
@@ -586,7 +587,7 @@ class CrossSessionService:
         if not self.background:
             return "disabled"
         ws = normalize_workspace_filter(workspace)
-        if not ws or not ws.startswith("/"):
+        if not ws or not is_absolute_workspace(ws):
             return "idle"
         if not getattr(self.agent, "available", True):
             return "no-key"

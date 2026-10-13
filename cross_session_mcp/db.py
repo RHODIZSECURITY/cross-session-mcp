@@ -14,7 +14,7 @@ from typing import Any
 
 from cross_session_mcp.models import SessionSummary
 from cross_session_mcp.readers.base import BaseSessionReader
-from cross_session_mcp.utils import is_excluded_workspace, logger, normalize_workspace_filter, now_utc_iso
+from cross_session_mcp.utils import is_absolute_workspace, is_excluded_workspace, logger, normalize_workspace_filter, now_utc_iso
 
 SCHEMA_VERSION = 4
 # Digest format version (8-section Extended Handoff = 2). Older digests are invalidated.
@@ -261,9 +261,11 @@ class CrossSessionDB:
 
         ws = normalize_workspace_filter(workspace_filter)
         if ws:
-            if ws.startswith("/"):
-                conditions.append("(workspace_path = ? OR workspace_path LIKE ? ESCAPE '\\')")
-                params.extend([ws, _like_escape(ws.rstrip("/")) + "/%"])
+            if is_absolute_workspace(ws):
+                ws_fwd = ws.replace("\\", "/").rstrip("/")
+                ws_back = ws.replace("/", "\\").rstrip("\\")
+                conditions.append("(workspace_path = ? OR workspace_path = ? OR workspace_path LIKE ? ESCAPE '\\' OR workspace_path LIKE ? ESCAPE '\\')")
+                params.extend([ws_fwd, ws_back, _like_escape(ws_fwd) + "/%", _like_escape(ws_back) + "\\%"])
             else:
                 conditions.append("workspace_path LIKE ? ESCAPE '\\'")
                 params.append(f"%{_like_escape(ws)}%")
